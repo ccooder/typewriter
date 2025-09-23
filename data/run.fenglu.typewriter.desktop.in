@@ -1,0 +1,10 @@
+[Desktop Entry]
+Name=typewriter
+Exec=typewriter
+Icon=run.fenglu.typewriter
+Terminal=false
+Type=Application
+Categories=Utility;
+Keywords=GTK;
+StartupNotify=true
+DBusActivatable=true

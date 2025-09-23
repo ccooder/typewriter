@@ -1,0 +1,8 @@
+# List of source files containing translatable strings.
+# Please keep this file sorted alphabetically.
+data/run.fenglu.typewriter.desktop.in
+data/run.fenglu.typewriter.metainfo.xml.in
+data/run.fenglu.typewriter.gschema.xml
+src/main.c
+src/typewriter-window.c
+src/typewriter-window.ui
