@@ -1,7 +1,7 @@
 project('typewriter', 'c',
           version: '0.1.0',
     meson_version: '>= 1.0.0',
-  default_options: [ 'warning_level=2', 'werror=false', 'c_std=gnu11', ],
+  default_options: [ 'warning_level=3', 'werror=false', 'c_std=gnu2x', ],
 )
 
 i18n = import('i18n')

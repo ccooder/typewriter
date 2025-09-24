@@ -1,44 +1,57 @@
-<?xml version="1.0" encoding="UTF-8"?>
+<?xml version='1.0' encoding='UTF-8'?>
+<!-- Created with Cambalache 0.96.1 -->
 <interface>
+  <!-- interface-name typewriter-window.ui -->
   <requires lib="gtk" version="4.0"/>
+  <requires lib="gio" version="2.0"/>
   <template class="TypewriterWindow" parent="GtkApplicationWindow">
-    <property name="title" translatable="yes">Typewriter</property>
-    <property name="default-width">800</property>
     <property name="default-height">600</property>
+    <property name="default-width">800</property>
+    <property name="title" translatable="yes">Typewriter</property>
     <property name="titlebar">
       <object class="GtkHeaderBar">
         <child type="end">
           <object class="GtkMenuButton">
-            <property name="primary">True</property>
             <property name="icon-name">open-menu-symbolic</property>
-            <property name="tooltip-text" translatable="yes">Main Menu</property>
             <property name="menu-model">primary_menu</property>
+            <property name="primary">True</property>
+            <property name="tooltip-text" translatable="yes">Main Menu</property>
           </object>
         </child>
       </object>
     </property>
-    <property name="child">
-      <object class="GtkLabel" id="label">
-        <property name="label" translatable="yes">Hello, World!</property>
-        <style>
-          <class name="title-1"/>
-        </style>
+    <child>
+      <object class="GtkBox">
+        <property name="orientation">vertical</property>
+        <child>
+          <object class="GtkTextView" id="control">
+            <property name="editable">False</property>
+          </object>
+        </child>
+        <!--<child>
+          <object class="GtkTextView" id="follow">
+            <property name="editable">True</property>
+          </object>
+        </child>
+        <child>
+          <object class="GtkStatusbar" id="statusbar"/>
+        </child>-->
       </object>
-    </property>
+    </child>
   </template>
   <menu id="primary_menu">
     <section>
       <item>
-        <attribute name="label" translatable="yes">_Preferences</attribute>
         <attribute name="action">app.preferences</attribute>
+        <attribute name="label" translatable="yes">_Preferences</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
         <attribute name="action">win.show-help-overlay</attribute>
+        <attribute name="label" translatable="yes">_Keyboard Shortcuts</attribute>
       </item>
       <item>
-        <attribute name="label" translatable="yes">_About Typewriter</attribute>
         <attribute name="action">app.about</attribute>
+        <attribute name="label" translatable="yes">_About Typewriter</attribute>
       </item>
     </section>
   </menu>

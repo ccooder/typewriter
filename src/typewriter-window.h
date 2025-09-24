@@ -21,11 +21,16 @@
 #pragma once
 
 #include <gtk/gtk.h>
+#include "typewriter-application.h"
 
 G_BEGIN_DECLS
 
 #define TYPEWRITER_TYPE_WINDOW (typewriter_window_get_type())
 
 G_DECLARE_FINAL_TYPE (TypewriterWindow, typewriter_window, TYPEWRITER, WINDOW, GtkApplicationWindow)
+
+TypewriterWindow *typewriter_window_new (TypewriterApplication *app);
+void typewriter_window_open(TypewriterWindow *win);
+
 
 G_END_DECLS
