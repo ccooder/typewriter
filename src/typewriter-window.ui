@@ -2,8 +2,8 @@
 <!-- Created with Cambalache 0.96.1 -->
 <interface>
   <!-- interface-name typewriter-window.ui -->
-  <requires lib="gtk" version="4.0"/>
   <requires lib="gio" version="2.0"/>
+  <requires lib="gtk" version="4.0"/>
   <template class="TypewriterWindow" parent="GtkApplicationWindow">
     <property name="default-height">600</property>
     <property name="default-width">800</property>
@@ -21,21 +21,137 @@
       </object>
     </property>
     <child>
-      <object class="GtkBox">
+      <object class="GtkGrid">
+        <property name="css-classes">content</property>
         <property name="orientation">vertical</property>
         <child>
-          <object class="GtkTextView" id="control">
-            <property name="editable">False</property>
-          </object>
-        </child>
-        <!--<child>
-          <object class="GtkTextView" id="follow">
-            <property name="editable">True</property>
+          <object class="GtkBox">
+            <property name="css-classes">stat</property>
+            <property name="hexpand">True</property>
+            <child>
+              <object class="GtkLabel" id="timer">
+                <property name="can-focus">False</property>
+                <property name="css-classes">timer</property>
+                <property name="has-tooltip">True</property>
+                <property name="hexpand">True</property>
+                <property name="label">0</property>
+                <property name="single-line-mode">True</property>
+                <property name="tooltip-text">用时</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSeparator"/>
+            </child>
+            <child>
+              <object class="GtkLabel" id="speed">
+                <property name="can-focus">False</property>
+                <property name="css-classes">speed</property>
+                <property name="hexpand">True</property>
+                <property name="label">0.0</property>
+                <property name="tooltip-text">速度</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSeparator"/>
+            </child>
+            <child>
+              <object class="GtkLabel" id="stroke">
+                <property name="css-classes">stroke</property>
+                <property name="hexpand">True</property>
+                <property name="label">0.0</property>
+                <property name="tooltip-text">击键</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSeparator"/>
+            </child>
+            <child>
+              <object class="GtkLabel" id="words">
+                <property name="css-classes">words</property>
+                <property name="hexpand">True</property>
+                <property name="label">0</property>
+                <property name="tooltip-text">总字数</property>
+              </object>
+            </child>
+            <layout>
+              <property name="column">0</property>
+              <property name="row">0</property>
+            </layout>
           </object>
         </child>
         <child>
-          <object class="GtkStatusbar" id="statusbar"/>
-        </child>-->
+          <object class="GtkBox">
+            <property name="css-classes">info_box</property>
+            <child>
+              <object class="GtkLabel" id="info">
+                <property name="hexpand">True</property>
+                <property name="label">欢迎语</property>
+              </object>
+            </child>
+            <layout>
+              <property name="column">0</property>
+              <property name="row">1</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <child>
+              <object class="GtkTextView" id="control">
+                <property name="css-classes">control</property>
+                <property name="cursor-visible">False</property>
+                <property name="editable">False</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+                <property name="wrap-mode">char</property>
+              </object>
+            </child>
+            <layout>
+              <property name="column">0</property>
+              <property name="row">2</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox">
+            <property name="hexpand">True</property>
+            <child>
+              <object class="GtkLabel"/>
+            </child>
+            <child>
+              <object class="GtkSeparator"/>
+            </child>
+            <child>
+              <object class="GtkLabel"/>
+            </child>
+            <child>
+              <object class="GtkSeparator"/>
+            </child>
+            <child>
+              <object class="GtkLabel"/>
+            </child>
+            <layout>
+              <property name="column">0</property>
+              <property name="row">3</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="GtkScrolledWindow">
+            <child>
+              <object class="GtkTextView" id="follow">
+                <property name="css-classes">follow</property>
+                <property name="hexpand">True</property>
+                <property name="vexpand">True</property>
+                <property name="wrap-mode">char</property>
+              </object>
+            </child>
+            <layout>
+              <property name="column">0</property>
+              <property name="row">4</property>
+            </layout>
+          </object>
+        </child>
       </object>
     </child>
   </template>
@@ -44,6 +160,14 @@
       <item>
         <attribute name="action">app.preferences</attribute>
         <attribute name="label" translatable="yes">_Preferences</attribute>
+      </item>
+      <item>
+        <attribute name="action">app.load_file</attribute>
+        <attribute name="label" translatable="yes">_Load File</attribute>
+      </item>
+      <item>
+        <attribute name="action">app.load_clipboard</attribute>
+        <attribute name="label" translatable="yes">_Load Clipboard</attribute>
       </item>
       <item>
         <attribute name="action">win.show-help-overlay</attribute>

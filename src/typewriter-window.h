@@ -20,17 +20,29 @@
 
 #pragma once
 
+#include <gdk/gdk.h>
 #include <gtk/gtk.h>
+
 #include "typewriter-application.h"
 
 G_BEGIN_DECLS
 
 #define TYPEWRITER_TYPE_WINDOW (typewriter_window_get_type())
 
-G_DECLARE_FINAL_TYPE (TypewriterWindow, typewriter_window, TYPEWRITER, WINDOW, GtkApplicationWindow)
+G_DECLARE_FINAL_TYPE(TypewriterWindow, typewriter_window, TYPEWRITER, WINDOW,
+                     GtkApplicationWindow)
 
-TypewriterWindow *typewriter_window_new (TypewriterApplication *app);
+TypewriterWindow *typewriter_window_new(TypewriterApplication *app);
 void typewriter_window_open(TypewriterWindow *win);
-
+static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
+                             guint keycode, GdkModifierType state,
+                             gpointer user_data);
+static void on_follow_buffer_changed(GtkTextBuffer *self, gpointer user_data);
+static void load_css_providers(TypewriterWindow *self);
+static size_t utf8_strlen(const char *s);
+void load_file(TypewriterWindow *win);
+void load_clipboard(TypewriterWindow *win);
+static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
+                                gpointer user_data);
 
 G_END_DECLS

@@ -24,14 +24,26 @@
 
 struct _TypewriterWindow {
   GtkApplicationWindow parent_instance;
+  GtkCssProvider *colors_provider;
 
   /* Template widgets */
   // 对照区
-  GtkTextView *control;
+  GtkWidget *control;
   // 跟打区
-  // GtkTextView *follow;
-  // 状态区
-  // GtkStatusbar *statusbar;
+  GtkWidget *follow;
+  // 顶部状态区
+  // 用时
+  GtkWidget *timer;
+  // 速度
+  GtkWidget *speed;
+  // 击键
+  GtkWidget *stroke;
+  // 总字数
+  GtkWidget *words;
+
+  // 顶部状态区
+  // 剪贴板内容
+  GtkWidget *info;
 };
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
@@ -43,12 +55,25 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
   gtk_widget_class_set_template_from_resource(
       widget_class, "/run/fenglu/typewriter/typewriter-window.ui");
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, control);
-  // gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, follow);
-  // gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, statusbar);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, follow);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, timer);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, speed);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, stroke);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, words);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, info);
 }
 
 static void typewriter_window_init(TypewriterWindow *self) {
   gtk_widget_init_template(GTK_WIDGET(self));
+  load_css_providers(self);
+  GtkEventController *keyboard_controller = gtk_event_controller_key_new();
+  g_signal_connect(keyboard_controller, "key-pressed", G_CALLBACK(on_key_press),
+                   NULL);
+  gtk_widget_add_controller(GTK_WIDGET(self->follow), keyboard_controller);
+  GtkTextBuffer *follow_buffer =
+      gtk_text_view_get_buffer(GTK_TEXT_VIEW(self->follow));
+  g_signal_connect(follow_buffer, "changed",
+                   G_CALLBACK(on_follow_buffer_changed), self);
 }
 
 TypewriterWindow *typewriter_window_new(TypewriterApplication *app) {
@@ -58,13 +83,157 @@ TypewriterWindow *typewriter_window_new(TypewriterApplication *app) {
 void typewriter_window_open(TypewriterWindow *win) {
   g_assert(TYPEWRITER_IS_WINDOW(win));
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->control));
-  g_print("buffer: %d\n", buffer != NULL);
-  GtkTextIter start_iter, end_iter;
+  char *welcome =
+      "欢迎您使用牛逢路的Linux版跟打器，快捷键如下：F3重打，Alt+"
+      "E从剪贴板载文，F6从本地文件载文，Crtl+Q退出。";
 
+  size_t welcome_length = utf8_strlen(welcome);
+  gtk_label_set_text(GTK_LABEL(win->words),
+                     g_strdup_printf("共%ld字", welcome_length));
 
-  gtk_text_buffer_set_text(buffer, "Hello, world!", -1);
-  gtk_text_buffer_get_start_iter(buffer, &start_iter);
-  gtk_text_buffer_get_end_iter(buffer, &end_iter);
+  gtk_text_buffer_set_text(buffer, welcome, -1);
+}
 
-  g_print("buffer: %s\n", gtk_text_buffer_get_text(buffer, &start_iter, &end_iter, FALSE));
+static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
+                             guint keycode, GdkModifierType state,
+                             gpointer user_data) {
+  if (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) {
+    // Return TRUE to indicate that the event has been handled and
+    // should not be propagated further (preventing default newline insertion)
+    return TRUE;
+  }
+  // For other keys, return FALSE to allow default processing
+  return FALSE;
+}
+
+static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
+                                     gpointer user_data) {
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  GtkTextIter start, end;
+  gtk_text_buffer_get_start_iter(follow_buffer, &start);
+  gtk_text_buffer_get_end_iter(follow_buffer, &end);
+  gchar *follow_text =
+      gtk_text_buffer_get_text(follow_buffer, &start, &end, FALSE);
+
+  // Assuming you have a reference_textview
+  GtkTextView *control = GTK_TEXT_VIEW(self->control);
+  GtkTextBuffer *control_buffer = gtk_text_view_get_buffer(control);
+  gtk_text_buffer_get_start_iter(control_buffer, &start);
+  gtk_text_buffer_get_end_iter(control_buffer, &end);
+  gchar *control_text =
+      gtk_text_buffer_get_text(control_buffer, &start, &end, FALSE);
+
+  gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
+
+  GtkTextTag *correct_tag = gtk_text_buffer_create_tag(
+      control_buffer, "correct", "background", "green", NULL);
+  GtkTextTag *incorrect_tag = gtk_text_buffer_create_tag(
+      control_buffer, "incorrect", "background", "red", NULL);
+
+  GtkTextIter char_iter;
+  gtk_text_buffer_get_start_iter(follow_buffer, &char_iter);
+  int i;
+  for (i = 0; !gtk_text_iter_is_end(&char_iter) && control_text[i] != '\0';) {
+    GtkTextIter start_iter = char_iter;
+    gtk_text_iter_forward_char(&char_iter);
+
+    // Get the character from the typed buffer and reference text
+    char *typed_char =
+        gtk_text_buffer_get_text(follow_buffer, &start_iter, &char_iter, FALSE);
+    gunichar typed_unichar = g_utf8_get_char(typed_char);
+    gunichar ref_unichar = g_utf8_get_char(&control_text[i]);
+
+    // Compare and apply the correct tag
+    if (typed_unichar == ref_unichar) {
+      g_assert(GTK_IS_TEXT_BUFFER(control_buffer));
+      gtk_text_buffer_apply_tag(follow_buffer, correct_tag, &start_iter,
+                                &char_iter);
+    } else {
+      gtk_text_buffer_apply_tag(follow_buffer, incorrect_tag, &start_iter,
+                                &char_iter);
+    }
+
+    // Move to the next character in the reference text
+    i += g_unichar_to_utf8(ref_unichar, NULL);
+    g_free(typed_char);
+  }
+  // Handle cases where one string is longer than the other
+  // ... apply tags for remaining characters if needed
+  g_free(follow_text);
+  g_free(control_text);
+}
+
+static void load_css_providers(TypewriterWindow *self) {
+  GdkDisplay *display;
+
+  display = gtk_widget_get_display(GTK_WIDGET(self));
+
+  /* Calendar olors */
+  self->colors_provider = gtk_css_provider_new();
+  gtk_css_provider_load_from_resource(self->colors_provider,
+                                      "/run/fenglu/typewriter/style.css");
+  gtk_style_context_add_provider_for_display(
+      display, GTK_STYLE_PROVIDER(self->colors_provider),
+      GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
+}
+
+static size_t utf8_strlen(const char *s) {
+  size_t count = 0;
+  while (*s != '\0') {
+    if ((*s & 0xC0) != 0x80) {  // If it's not a continuation byte
+      count++;
+    }
+    s++;
+  }
+  return count;
+}
+
+static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
+                                gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  GError *error = NULL;
+
+  // 读取文本内容
+  char *text = gdk_clipboard_read_text_finish(clipboard, result, &error);
+
+  if (error != NULL) {
+    g_printerr("Error reading clipboard: %s\n", error->message);
+    g_error_free(error);
+    return;
+  }
+
+  if (text != NULL) {
+    // 成功获取到文本，可以在这里进行处理
+    GtkTextBuffer *buffer =
+        gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->control));
+    gtk_text_buffer_set_text(buffer, text, -1);
+    gtk_label_set_text(GTK_LABEL(win->info), "来自剪贴板");
+    // 计算文本长度
+    int text_length = utf8_strlen(text);
+    g_print("%d", text_length);
+    // 更新总字数标签
+    gtk_label_set_text(GTK_LABEL(win->words),
+                       g_strdup_printf("共%d字", text_length));
+
+    // 不要忘记释放文本资源
+    g_free(text);
+  }
+}
+
+void load_file(TypewriterWindow *win) {
+  g_assert(TYPEWRITER_IS_WINDOW(win));
+  g_print("load_file\n");
+}
+
+void load_clipboard(TypewriterWindow *win) {
+  g_assert(TYPEWRITER_IS_WINDOW(win));
+
+  GdkDisplay *display;
+
+  display = gtk_widget_get_display(GTK_WIDGET(win));
+  GdkClipboard *clipboard = gdk_display_get_clipboard(display);
+  gdk_clipboard_read_text_async(clipboard, NULL,
+                                (GAsyncReadyCallback)load_clipboard_text, win);
+
+  g_print("load_clipboard\n");
 }

@@ -1,0 +1,30 @@
+.stat > label {
+    background-color: #5c6463;
+    color: #eeeeee;
+    font-size: 15px;
+}
+
+.info_box {
+    background-color: teal;
+    color: #eeeeee;
+    font-size: 14px;
+}
+
+.control {
+    border: 1px solid gray;
+    font-size: 24px;
+    background-color: #EEE;
+    padding: 0 3px;
+}
+
+.follow {
+    border: 1px solid gray;
+    font-size: 24px;
+    background-color: #eee;
+    padding: 0 3px;
+}
+
+.content {
+    padding: 0 5px 5px 5px;
+    background-color: #464d4c;
+}
