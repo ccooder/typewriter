@@ -42,8 +42,10 @@ struct _TypewriterWindow {
   GtkWidget *words;
 
   // 顶部状态区
-  // 剪贴板内容
   GtkWidget *info;
+
+  // preedit buffer
+  gchar *preedit_buffer;
 };
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
@@ -68,12 +70,14 @@ static void typewriter_window_init(TypewriterWindow *self) {
   load_css_providers(self);
   GtkEventController *keyboard_controller = gtk_event_controller_key_new();
   g_signal_connect(keyboard_controller, "key-pressed", G_CALLBACK(on_key_press),
-                   NULL);
+                   self);
   gtk_widget_add_controller(GTK_WIDGET(self->follow), keyboard_controller);
   GtkTextBuffer *follow_buffer =
       gtk_text_view_get_buffer(GTK_TEXT_VIEW(self->follow));
   g_signal_connect(follow_buffer, "changed",
                    G_CALLBACK(on_follow_buffer_changed), self);
+  g_signal_connect(self->follow, "preedit-changed",
+                   G_CALLBACK(on_preedit_changed), self);
 }
 
 TypewriterWindow *typewriter_window_new(TypewriterApplication *app) {
@@ -85,7 +89,7 @@ void typewriter_window_open(TypewriterWindow *win) {
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->control));
   char *welcome =
       "欢迎您使用牛逢路的Linux版跟打器，快捷键如下：F3重打，Alt+"
-      "E从剪贴板载文，F6从本地文件载文，Crtl+Q退出。";
+      "E从剪贴板载文，F6从本地文件载文，Ctrl+Q退出。";
 
   size_t welcome_length = utf8_strlen(welcome);
   gtk_label_set_text(GTK_LABEL(win->words),
@@ -97,7 +101,10 @@ void typewriter_window_open(TypewriterWindow *win) {
 static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
                              guint keycode, GdkModifierType state,
                              gpointer user_data) {
-  if (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter) {
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+
+  if ((self->preedit_buffer == NULL || strlen(self->preedit_buffer) <= 0) &&
+      (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)) {
     // Return TRUE to indicate that the event has been handled and
     // should not be propagated further (preventing default newline insertion)
     return TRUE;
@@ -115,7 +122,6 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   gchar *follow_text =
       gtk_text_buffer_get_text(follow_buffer, &start, &end, FALSE);
 
-  // Assuming you have a reference_textview
   GtkTextView *control = GTK_TEXT_VIEW(self->control);
   GtkTextBuffer *control_buffer = gtk_text_view_get_buffer(control);
   gtk_text_buffer_get_start_iter(control_buffer, &start);
@@ -126,14 +132,14 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
 
   GtkTextTag *correct_tag = gtk_text_buffer_create_tag(
-      control_buffer, "correct", "background", "green", NULL);
+      control_buffer, NULL, "background", "green", NULL);
   GtkTextTag *incorrect_tag = gtk_text_buffer_create_tag(
-      control_buffer, "incorrect", "background", "red", NULL);
+      control_buffer, NULL, "background", "red", NULL);
 
   GtkTextIter char_iter;
   gtk_text_buffer_get_start_iter(follow_buffer, &char_iter);
-  int i;
-  for (i = 0; !gtk_text_iter_is_end(&char_iter) && control_text[i] != '\0';) {
+  for (int i = 0;
+       !gtk_text_iter_is_end(&char_iter) && control_text[i] != '\0';) {
     GtkTextIter start_iter = char_iter;
     gtk_text_iter_forward_char(&char_iter);
 
@@ -144,13 +150,18 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
     gunichar ref_unichar = g_utf8_get_char(&control_text[i]);
 
     // Compare and apply the correct tag
+    int next = i + g_unichar_to_utf8(ref_unichar, NULL);
+    GtkTextIter control_start_iter, control_end_iter;
+    gtk_text_buffer_get_iter_at_offset(control_buffer, &control_start_iter,
+                                       gtk_text_iter_get_offset(&start_iter));
+    gtk_text_buffer_get_iter_at_offset(control_buffer, &control_end_iter,
+                                       gtk_text_iter_get_offset(&char_iter));
     if (typed_unichar == ref_unichar) {
-      g_assert(GTK_IS_TEXT_BUFFER(control_buffer));
-      gtk_text_buffer_apply_tag(follow_buffer, correct_tag, &start_iter,
-                                &char_iter);
+      gtk_text_buffer_apply_tag(control_buffer, correct_tag,
+                                &control_start_iter, &control_end_iter);
     } else {
-      gtk_text_buffer_apply_tag(follow_buffer, incorrect_tag, &start_iter,
-                                &char_iter);
+      gtk_text_buffer_apply_tag(control_buffer, incorrect_tag,
+                                &control_start_iter, &control_end_iter);
     }
 
     // Move to the next character in the reference text
@@ -161,6 +172,12 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   // ... apply tags for remaining characters if needed
   g_free(follow_text);
   g_free(control_text);
+}
+
+static void on_preedit_changed(GtkTextView *self, gchar *preedit,
+                               gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  win->preedit_buffer = preedit;
 }
 
 static void load_css_providers(TypewriterWindow *self) {
@@ -210,7 +227,6 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
     gtk_label_set_text(GTK_LABEL(win->info), "来自剪贴板");
     // 计算文本长度
     int text_length = utf8_strlen(text);
-    g_print("%d", text_length);
     // 更新总字数标签
     gtk_label_set_text(GTK_LABEL(win->words),
                        g_strdup_printf("共%d字", text_length));
@@ -220,10 +236,7 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
   }
 }
 
-void load_file(TypewriterWindow *win) {
-  g_assert(TYPEWRITER_IS_WINDOW(win));
-  g_print("load_file\n");
-}
+void load_file(TypewriterWindow *win) { g_assert(TYPEWRITER_IS_WINDOW(win)); }
 
 void load_clipboard(TypewriterWindow *win) {
   g_assert(TYPEWRITER_IS_WINDOW(win));
@@ -234,6 +247,4 @@ void load_clipboard(TypewriterWindow *win) {
   GdkClipboard *clipboard = gdk_display_get_clipboard(display);
   gdk_clipboard_read_text_async(clipboard, NULL,
                                 (GAsyncReadyCallback)load_clipboard_text, win);
-
-  g_print("load_clipboard\n");
 }

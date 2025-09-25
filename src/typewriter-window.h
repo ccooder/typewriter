@@ -38,6 +38,8 @@ static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
                              guint keycode, GdkModifierType state,
                              gpointer user_data);
 static void on_follow_buffer_changed(GtkTextBuffer *self, gpointer user_data);
+static void on_preedit_changed(GtkTextView *self, gchar *preedit,
+                            gpointer user_data);
 static void load_css_providers(TypewriterWindow *self);
 static size_t utf8_strlen(const char *s);
 void load_file(TypewriterWindow *win);

@@ -82,6 +82,7 @@
         <child>
           <object class="GtkBox">
             <property name="css-classes">info_box</property>
+            <property name="height-request">20</property>
             <child>
               <object class="GtkLabel" id="info">
                 <property name="hexpand">True</property>
