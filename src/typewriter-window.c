@@ -91,7 +91,7 @@ void typewriter_window_open(TypewriterWindow *win) {
       "欢迎您使用牛逢路的Linux版跟打器，快捷键如下：F3重打，Alt+"
       "E从剪贴板载文，F6从本地文件载文，Ctrl+Q退出。";
 
-  size_t welcome_length = utf8_strlen(welcome);
+  glong welcome_length = g_utf8_strlen(welcome, -1);
   gtk_label_set_text(GTK_LABEL(win->words),
                      g_strdup_printf("共%ld字", welcome_length));
 
@@ -102,12 +102,15 @@ static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
                              guint keycode, GdkModifierType state,
                              gpointer user_data) {
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
-
   if ((self->preedit_buffer == NULL || strlen(self->preedit_buffer) <= 0) &&
       (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)) {
     // Return TRUE to indicate that the event has been handled and
     // should not be propagated further (preventing default newline insertion)
     return TRUE;
+  }
+  if (self->preedit_buffer != NULL) {
+    g_free(self->preedit_buffer);
+    self->preedit_buffer = NULL;
   }
   // For other keys, return FALSE to allow default processing
   return FALSE;
@@ -177,7 +180,8 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
 static void on_preedit_changed(GtkTextView *self, gchar *preedit,
                                gpointer user_data) {
   TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  win->preedit_buffer = preedit;
+  win->preedit_buffer = g_malloc(sizeof(char) * (strlen(preedit) + 1));
+  strcpy(win->preedit_buffer, preedit);
 }
 
 static void load_css_providers(TypewriterWindow *self) {
@@ -192,17 +196,6 @@ static void load_css_providers(TypewriterWindow *self) {
   gtk_style_context_add_provider_for_display(
       display, GTK_STYLE_PROVIDER(self->colors_provider),
       GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
-}
-
-static size_t utf8_strlen(const char *s) {
-  size_t count = 0;
-  while (*s != '\0') {
-    if ((*s & 0xC0) != 0x80) {  // If it's not a continuation byte
-      count++;
-    }
-    s++;
-  }
-  return count;
 }
 
 static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
@@ -226,7 +219,8 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
     gtk_text_buffer_set_text(buffer, text, -1);
     gtk_label_set_text(GTK_LABEL(win->info), "来自剪贴板");
     // 计算文本长度
-    int text_length = utf8_strlen(text);
+
+    int text_length = g_utf8_strlen(text, -1);
     // 更新总字数标签
     gtk_label_set_text(GTK_LABEL(win->words),
                        g_strdup_printf("共%d字", text_length));
