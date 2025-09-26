@@ -29,17 +29,23 @@ G_BEGIN_DECLS
 
 #define TYPEWRITER_TYPE_WINDOW (typewriter_window_get_type())
 
+#define REFRESH_INTERVAL 100
+
 G_DECLARE_FINAL_TYPE(TypewriterWindow, typewriter_window, TYPEWRITER, WINDOW,
                      GtkApplicationWindow)
 
 TypewriterWindow *typewriter_window_new(TypewriterApplication *app);
 void typewriter_window_open(TypewriterWindow *win);
+static void on_window_focus_enter(GtkEventControllerFocus *self,
+                               gpointer user_data);
+static void on_window_focus_leave(GtkEventControllerFocus *self,
+                               gpointer user_data);
 static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
                              guint keycode, GdkModifierType state,
                              gpointer user_data);
 static void on_follow_buffer_changed(GtkTextBuffer *self, gpointer user_data);
 static void on_preedit_changed(GtkTextView *self, gchar *preedit,
-                            gpointer user_data);
+                               gpointer user_data);
 static void load_css_providers(TypewriterWindow *self);
 static size_t utf8_strlen(const char *s);
 void load_file(TypewriterWindow *win);

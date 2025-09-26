@@ -58,6 +58,7 @@ struct _TypewriterWindow {
   // 开始时间
   gint flag;
   guint64 start_time;
+  guint64 duration;
   guint stroke_count;
   guint correct_char_count;
   guint total_char_count;
@@ -94,9 +95,17 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->flag = READY;
   self->correct_char_count = 0;
   self->start_time = 0;
+  self->duration = 0;
   self->update_timer_id = 0;
   self->max_queue_size = 10;  // 存储最近10次击键时间
   self->key_time_queue = g_queue_new();
+
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(self->follow));
+  GtkTextIter end_iter;
+  gtk_text_buffer_get_end_iter(buffer, &end_iter);
+  GtkTextMark *end_mark = gtk_text_mark_new("end", FALSE);
+
+  gtk_text_buffer_add_mark(buffer, end_mark, &end_iter);
 
   GtkEventController *keyboard_controller = gtk_event_controller_key_new();
   g_signal_connect(keyboard_controller, "key-pressed", G_CALLBACK(on_key_press),
@@ -108,6 +117,12 @@ static void typewriter_window_init(TypewriterWindow *self) {
                    G_CALLBACK(on_follow_buffer_changed), self);
   g_signal_connect(self->follow, "preedit-changed",
                    G_CALLBACK(on_preedit_changed), self);
+  GtkEventController *focus_controller = gtk_event_controller_focus_new();
+  gtk_widget_add_controller(GTK_WIDGET(self), focus_controller);
+  g_signal_connect(focus_controller, "enter", G_CALLBACK(on_window_focus_enter),
+                   self);
+  g_signal_connect(focus_controller, "leave", G_CALLBACK(on_window_focus_leave),
+                   self);
 }
 
 TypewriterWindow *typewriter_window_new(TypewriterApplication *app) {
@@ -126,6 +141,40 @@ void typewriter_window_open(TypewriterWindow *win) {
                      g_strdup_printf("共%ld字", welcome_length));
 
   gtk_text_buffer_set_text(buffer, welcome, -1);
+}
+
+static void on_window_focus_enter(GtkEventControllerFocus *self,
+                                  gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  GtkTextView *follow = GTK_TEXT_VIEW(win->follow);
+  gtk_widget_set_visible(GTK_WIDGET(follow),  TRUE);
+  GtkTextBuffer *buffer = gtk_text_view_get_buffer(follow);
+  if (buffer != NULL) {
+    GtkTextIter end_iter;
+
+    // Get an iterator pointing to the end of the buffer
+    gtk_text_buffer_get_end_iter(buffer, &end_iter);
+    gtk_text_buffer_place_cursor(buffer, &end_iter);
+    GtkTextMark *end_mark = gtk_text_buffer_get_mark(buffer, "end");
+    gtk_text_buffer_move_mark(buffer, end_mark, &end_iter);
+
+    GtkTextIter markIter;
+    gtk_text_buffer_get_iter_at_mark(buffer, &markIter, end_mark);
+    int offset = gtk_text_iter_get_offset(&markIter);
+
+    gtk_text_view_scroll_mark_onscreen(follow, end_mark);
+  }
+  g_print("grab_foucus result %d\n", gtk_widget_grab_focus(win->follow));
+}
+
+static void on_window_focus_leave(GtkEventControllerFocus *self,
+                                  gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  if (win->flag == TYPING) {
+    win->flag = PAUSING;
+    g_source_remove(win->update_timer_id);
+    win->update_timer_id = 0;
+  }
 }
 
 static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
@@ -147,9 +196,15 @@ static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
     return TRUE;
   }
 
-  if (self->flag == PAUSING) {
+  if (self->flag == PAUSING &&
+      keyval != GDK_KEY_Return && keyval != GDK_KEY_Escape &&
+      keyval != GDK_KEY_Shift_L && keyval != GDK_KEY_Control_L &&
+      keyval != GDK_KEY_Alt_L && keyval != GDK_KEY_Super_L &&
+      keyval != GDK_KEY_Caps_Lock && keyval != GDK_KEY_Tab) {
+    // 判断按键是数字，字母键，符号键
     self->flag = TYPING;
-    self->update_timer_id = g_timeout_add(100, update_stat_ui, self);
+    self->update_timer_id =
+        g_timeout_add(REFRESH_INTERVAL, update_stat_ui, self);
   }
 
   if (self->flag == TYPING) {
@@ -228,7 +283,8 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   if (self->flag == READY) {
     self->flag = TYPING;
     self->start_time = g_get_monotonic_time();
-    self->update_timer_id = g_timeout_add(100, update_stat_ui, self);
+    self->update_timer_id =
+        g_timeout_add(REFRESH_INTERVAL, update_stat_ui, self);
   }
 
   GtkTextIter start, end;
@@ -253,8 +309,12 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
 
   GtkTextIter char_iter;
   gtk_text_buffer_get_start_iter(follow_buffer, &char_iter);
+  // 临时变量,ccc为正确打字数，tcc为总打字数
+  guint ccc = 0;
+  guint tcc = 0;
   for (int i = 0;
        !gtk_text_iter_is_end(&char_iter) && control_text[i] != '\0';) {
+    tcc++;
     GtkTextIter start_iter = char_iter;
     gtk_text_iter_forward_char(&char_iter);
 
@@ -265,7 +325,6 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
     gunichar ref_unichar = g_utf8_get_char(&control_text[i]);
 
     // Compare and apply the correct tag
-    int next = i + g_unichar_to_utf8(ref_unichar, NULL);
     GtkTextIter control_start_iter, control_end_iter;
     gtk_text_buffer_get_iter_at_offset(control_buffer, &control_start_iter,
                                        gtk_text_iter_get_offset(&start_iter));
@@ -274,6 +333,7 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
     if (typed_unichar == ref_unichar) {
       gtk_text_buffer_apply_tag(control_buffer, correct_tag,
                                 &control_start_iter, &control_end_iter);
+      ccc++;
     } else {
       gtk_text_buffer_apply_tag(control_buffer, incorrect_tag,
                                 &control_start_iter, &control_end_iter);
@@ -283,6 +343,8 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
     i += g_unichar_to_utf8(ref_unichar, NULL);
     g_free(typed_char);
   }
+  self->correct_char_count = ccc;
+  self->total_char_count = tcc;
   // Handle cases where one string is longer than the other
   // ... apply tags for remaining characters if needed
   g_free(follow_text);
@@ -357,14 +419,16 @@ void load_clipboard(TypewriterWindow *win) {
 
 static gboolean update_stat_ui(gpointer user_data) {
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  self->duration += REFRESH_INTERVAL;
 
-  if (self->start_time == 0) {
+  if (self->flag != TYPING) {
     return G_SOURCE_CONTINUE;
   }
 
   // 计算已用时间（毫秒）
   gint64 current_time = g_get_monotonic_time();
-  gint64 elapsed_time_ms = (current_time - self->start_time) / 1000;
+  // gint64 elapsed_time_ms = (current_time - self->start_time) / 1000;
+  gint64 elapsed_time_ms = self->duration;
 
   // 显示用时
   guint seconds = elapsed_time_ms / 1000;
