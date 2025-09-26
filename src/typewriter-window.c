@@ -22,6 +22,14 @@
 
 #include "config.h"
 
+enum TypeFlag {
+  RETYPE_READY = 0,
+  READY = 1,
+  TYPING = 2,
+  PAUSING = 3,
+  ENDED = 4
+};
+
 struct _TypewriterWindow {
   GtkApplicationWindow parent_instance;
   GtkCssProvider *colors_provider;
@@ -46,6 +54,18 @@ struct _TypewriterWindow {
 
   // preedit buffer
   gchar *preedit_buffer;
+
+  // 开始时间
+  gint flag;
+  guint64 start_time;
+  guint stroke_count;
+  guint correct_char_count;
+  guint total_char_count;
+  guint update_timer_id;
+
+  // 实时击键速度
+  GQueue *key_time_queue;
+  guint max_queue_size;
 };
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
@@ -68,6 +88,16 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
 static void typewriter_window_init(TypewriterWindow *self) {
   gtk_widget_init_template(GTK_WIDGET(self));
   load_css_providers(self);
+
+  // 初始化状态变量
+  self->stroke_count = 0;
+  self->flag = READY;
+  self->correct_char_count = 0;
+  self->start_time = 0;
+  self->update_timer_id = 0;
+  self->max_queue_size = 10;  // 存储最近10次击键时间
+  self->key_time_queue = g_queue_new();
+
   GtkEventController *keyboard_controller = gtk_event_controller_key_new();
   g_signal_connect(keyboard_controller, "key-pressed", G_CALLBACK(on_key_press),
                    self);
@@ -102,12 +132,37 @@ static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
                              guint keycode, GdkModifierType state,
                              gpointer user_data) {
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  if (self->flag == RETYPE_READY) {
+    self->flag = READY;
+  }
   if ((self->preedit_buffer == NULL || strlen(self->preedit_buffer) <= 0) &&
       (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)) {
     // Return TRUE to indicate that the event has been handled and
     // should not be propagated further (preventing default newline insertion)
+    if (self->flag == TYPING) {
+      self->flag = PAUSING;
+      g_source_remove(self->update_timer_id);
+      self->update_timer_id = 0;
+    }
     return TRUE;
   }
+
+  if (self->flag == PAUSING) {
+    self->flag = TYPING;
+    self->update_timer_id = g_timeout_add(100, update_stat_ui, self);
+  }
+
+  if (self->flag == TYPING) {
+    self->stroke_count++;
+    guint64 current_time = g_get_monotonic_time();
+    g_queue_push_tail(self->key_time_queue, GSIZE_TO_POINTER(current_time));
+
+    // 保持队列大小不超过max_queue_size
+    if (g_queue_get_length(self->key_time_queue) > self->max_queue_size) {
+      g_queue_pop_head(self->key_time_queue);
+    }
+  }
+
   if (self->preedit_buffer != NULL) {
     g_free(self->preedit_buffer);
     self->preedit_buffer = NULL;
@@ -116,9 +171,66 @@ static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
   return FALSE;
 }
 
+// ###############################
+// 编写异步临时方法
+// ###############################
+static void calculation_done_cb(GObject *source_object, GAsyncResult *res,
+                                gpointer user_data) {
+  g_print("cal finished");
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  GtkTextBuffer *follow_buffer =
+      gtk_text_view_get_buffer(GTK_TEXT_VIEW(self->follow));
+  gtk_text_buffer_set_text(follow_buffer, "Calculation finished", -1);
+}
+
+static void long_calculation_thread(GTask *task, gpointer source_object,
+                                    gpointer task_data,
+                                    GCancellable *cancellable) {
+  g_print("source_object: %d\n", source_object == NULL);
+  g_print("task_data: %d\n", task_data == NULL);
+  g_print("Worker thread: Starting heavy calculation...\n");
+
+  // Simulate a long calculation.
+  sleep(3);
+
+  // Create a pointer for the result. The GTask will take ownership.
+  gint *result = g_new(gint, 1);
+  *result = 42;
+
+  g_print("Worker thread: Calculation finished. Returning result...\n");
+
+  // Return the result to the main thread.
+  // g_free will be called on the pointer when the task is destroyed.
+  g_task_return_pointer(task, result, g_free);
+}
+
+static void start_calculation_cb(gpointer user_data) {
+  GTask *task;
+
+  // Update UI to give feedback and prevent double-clicks.
+
+  // Create a new GTask. We pass our widgets and the completion callback.
+  task = g_task_new(user_data, NULL, calculation_done_cb, user_data);
+
+  // Run our worker function in a background thread from GLib's thread pool.
+  // [1.4.1]
+  g_task_run_in_thread(task, long_calculation_thread);
+
+  // We can now release our reference to the task. The thread owns it now.
+  g_object_unref(task);
+}
+
 static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
                                      gpointer user_data) {
+  // start_calculation_cb(user_data);
+
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  if (self->flag == READY) {
+    self->flag = TYPING;
+    self->start_time = g_get_monotonic_time();
+    self->update_timer_id = g_timeout_add(100, update_stat_ui, self);
+  }
+
   GtkTextIter start, end;
   gtk_text_buffer_get_start_iter(follow_buffer, &start);
   gtk_text_buffer_get_end_iter(follow_buffer, &end);
@@ -241,4 +353,96 @@ void load_clipboard(TypewriterWindow *win) {
   GdkClipboard *clipboard = gdk_display_get_clipboard(display);
   gdk_clipboard_read_text_async(clipboard, NULL,
                                 (GAsyncReadyCallback)load_clipboard_text, win);
+}
+
+static gboolean update_stat_ui(gpointer user_data) {
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+
+  if (self->start_time == 0) {
+    return G_SOURCE_CONTINUE;
+  }
+
+  // 计算已用时间（毫秒）
+  gint64 current_time = g_get_monotonic_time();
+  gint64 elapsed_time_ms = (current_time - self->start_time) / 1000;
+
+  // 显示用时
+  guint seconds = elapsed_time_ms / 1000;
+  guint minutes = seconds / 60;
+  seconds = seconds % 60;
+  guint milliseconds = elapsed_time_ms % 1000;
+
+  gtk_label_set_text(
+      GTK_LABEL(self->timer),
+      g_strdup_printf("%02u:%02u.%03u", minutes, seconds, milliseconds));
+
+  // 计算实时击键速度（最近几次击键的平均速度）
+  double realtime_stroke_speed = 0.0;
+
+  if (g_queue_get_length(self->key_time_queue) >= 2) {
+    gint64 first_time =
+        GPOINTER_TO_SIZE(g_queue_peek_head(self->key_time_queue));
+    gint64 time_diff_ms = (current_time - first_time) / 1000;
+
+    // 确保时间差不为0
+    if (time_diff_ms > 0) {
+      // 计算每秒击键数
+      realtime_stroke_speed = (g_queue_get_length(self->key_time_queue) - 1) *
+                              1000.0 / time_diff_ms;
+    }
+  }
+
+  // 计算整体打字速度（正确字符数/时间，每分钟字数）
+  double overall_typing_speed = 0.0;
+
+  if (elapsed_time_ms > 0 && self->total_char_count > 0) {
+    // 转换为分钟并计算每分钟字数
+    overall_typing_speed = (self->total_char_count * 60000.0) / elapsed_time_ms;
+  }
+
+  // 显示速度与击键信息
+  gtk_label_set_text(GTK_LABEL(self->speed),
+                     g_strdup_printf("%.2f", overall_typing_speed));
+  gtk_label_set_text(GTK_LABEL(self->stroke),
+                     g_strdup_printf("%.1f", realtime_stroke_speed));
+
+  return G_SOURCE_CONTINUE;
+}
+
+void typewriter_window_retype(TypewriterWindow *win) {
+  g_assert(TYPEWRITER_IS_WINDOW(win));
+
+  // 停止计时器
+  if (win->update_timer_id > 0) {
+    g_source_remove(win->update_timer_id);
+    win->update_timer_id = 0;
+  }
+
+  // 清空击键时间队列
+  g_queue_clear(win->key_time_queue);
+
+  // 重置计数器
+  win->flag = RETYPE_READY;
+  win->stroke_count = 0;
+  win->correct_char_count = 0;
+  win->total_char_count = 0;
+  win->start_time = 0;
+
+  // 重置UI显示
+  gtk_label_set_text(GTK_LABEL(win->timer), "00:00.000");
+  gtk_label_set_text(GTK_LABEL(win->speed), "0.0");
+  gtk_label_set_text(GTK_LABEL(win->stroke), "0.0");
+
+  // 清空跟打区
+  GtkTextBuffer *follow_buffer =
+      gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->follow));
+  gtk_text_buffer_set_text(follow_buffer, "", -1);
+
+  // 移除对照区的所有标记
+  GtkTextBuffer *control_buffer =
+      gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->control));
+  GtkTextIter start, end;
+  gtk_text_buffer_get_start_iter(control_buffer, &start);
+  gtk_text_buffer_get_end_iter(control_buffer, &end);
+  gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
 }

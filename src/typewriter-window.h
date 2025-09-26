@@ -46,5 +46,7 @@ void load_file(TypewriterWindow *win);
 void load_clipboard(TypewriterWindow *win);
 static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
                                 gpointer user_data);
+static gboolean update_stat_ui(gpointer user_data);
+void typewriter_window_retype(TypewriterWindow *win);
 
 G_END_DECLS
