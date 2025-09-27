@@ -29,7 +29,8 @@ G_BEGIN_DECLS
 
 #define TYPEWRITER_TYPE_WINDOW (typewriter_window_get_type())
 
-#define REFRESH_INTERVAL 100
+// UI 刷新间隔 单位毫秒
+#define REFRESH_INTERVAL 7
 
 G_DECLARE_FINAL_TYPE(TypewriterWindow, typewriter_window, TYPEWRITER, WINDOW,
                      GtkApplicationWindow)
@@ -37,15 +38,16 @@ G_DECLARE_FINAL_TYPE(TypewriterWindow, typewriter_window, TYPEWRITER, WINDOW,
 TypewriterWindow *typewriter_window_new(TypewriterApplication *app);
 void typewriter_window_open(TypewriterWindow *win);
 static void on_window_focus_enter(GtkEventControllerFocus *self,
-                               gpointer user_data);
+                                  gpointer user_data);
 static void on_window_focus_leave(GtkEventControllerFocus *self,
-                               gpointer user_data);
+                                  gpointer user_data);
 static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
                              guint keycode, GdkModifierType state,
                              gpointer user_data);
 static void on_follow_buffer_changed(GtkTextBuffer *self, gpointer user_data);
 static void on_preedit_changed(GtkTextView *self, gchar *preedit,
                                gpointer user_data);
+static void on_type_ended(TypewriterWindow *win, gpointer user_data);
 static void load_css_providers(TypewriterWindow *self);
 static size_t utf8_strlen(const char *s);
 void load_file(TypewriterWindow *win);
@@ -53,6 +55,7 @@ void load_clipboard(TypewriterWindow *win);
 static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
                                 gpointer user_data);
 static gboolean update_stat_ui(gpointer user_data);
+void typewriter_pause(TypewriterWindow *self);
 void typewriter_window_retype(TypewriterWindow *win);
 
 G_END_DECLS

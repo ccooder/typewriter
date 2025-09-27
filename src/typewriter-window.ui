@@ -66,6 +66,17 @@
               <object class="GtkSeparator"/>
             </child>
             <child>
+              <object class="GtkLabel" id="code_len">
+                <property name="css-classes">code_len</property>
+                <property name="hexpand">True</property>
+                <property name="label">0.0</property>
+                <property name="tooltip-text">码长</property>
+              </object>
+            </child>
+            <child>
+              <object class="GtkSeparator"/>
+            </child>
+            <child>
               <object class="GtkLabel" id="words">
                 <property name="css-classes">words</property>
                 <property name="hexpand">True</property>
