@@ -3,110 +3,117 @@
 //
 
 #include "typewriter-input.h"
-#include "typewriter-window.h"
-#include "typewriter-ui.h"
 
-void on_preedit_changed(GtkTextView *self, gchar *preedit,
-                               gpointer user_data) {
+#include "typewriter-ui.h"
+#include "typewriter-window.h"
+
+void on_preedit_changed(GtkTextView *self, gchar *preedit, gpointer user_data) {
   TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
   win->preedit_buffer = g_malloc(sizeof(char) * (strlen(preedit) + 1));
   strcpy(win->preedit_buffer, preedit);
 }
 
 static gboolean handle_special_keys(TypewriterWindow *self, guint keyval) {
-    // 处理特殊按键逻辑
-    if (self->state == TYPEWRITER_STATE_ENDED) {
-        return TRUE;
+  // 处理特殊按键逻辑
+  if ((self->preedit_buffer == NULL || strlen(self->preedit_buffer) <= 0) &&
+      (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)) {
+    if (self->state == TYPEWRITER_STATE_TYPING) {
+      typewriter_pause(self);
     }
-    
-    if ((self->preedit_buffer == NULL || strlen(self->preedit_buffer) <= 0) &&
-        (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)) {
-        if (self->state == TYPEWRITER_STATE_TYPING) {
-            typewriter_pause(self);
-        }
-        return TRUE;
-    }
-    
-    return FALSE;
+    return TRUE;
+  }
+
+  return FALSE;
 }
 
 gboolean is_special_key(guint keyval) {
   return keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter ||
-    keyval == GDK_KEY_Escape || keyval == GDK_KEY_Shift_L ||
-    keyval == GDK_KEY_Control_L || keyval == GDK_KEY_Alt_L ||
-    keyval == GDK_KEY_Super_L || keyval == GDK_KEY_Caps_Lock ||
-    keyval == GDK_KEY_Tab;
+         keyval == GDK_KEY_Escape || keyval == GDK_KEY_Shift_L ||
+         keyval == GDK_KEY_Control_L || keyval == GDK_KEY_Alt_L ||
+         keyval == GDK_KEY_Super_L || keyval == GDK_KEY_Caps_Lock ||
+         keyval == GDK_KEY_Tab;
 }
 
 static void update_typing_state(TypewriterWindow *self, guint keyval) {
-    // 更新打字状态
-    if ((self->state == TYPEWRITER_STATE_PAUSING ||
-         self->state == TYPEWRITER_STATE_READY) &&
-        !is_special_key(keyval)) {
-        gint64 current_time = g_get_monotonic_time();
-        if (self->state == TYPEWRITER_STATE_READY) {
-            self->stats.start_time = current_time;
-        }
-        if (self->state == TYPEWRITER_STATE_PAUSING) {
-            // 计算暂停时长
-            self->stats.pause_duration += (current_time - self->stats.pause_start_time);
-            self->stats.pause_start_time = 0;
-        }
-        self->state = TYPEWRITER_STATE_TYPING;
-        
-        // 防止重复设置定时器
-        if (self->update_timer_id == 0) {
-            self->update_timer_id = g_timeout_add(REFRESH_INTERVAL, update_stat_ui, self);
-        }
+  // 更新打字状态
+  if ((self->state == TYPEWRITER_STATE_PAUSING ||
+       self->state == TYPEWRITER_STATE_READY) &&
+      !is_special_key(keyval)) {
+    gint64 current_time = g_get_monotonic_time();
+    if (self->state == TYPEWRITER_STATE_READY) {
+      self->stats.start_time = current_time;
     }
+    if (self->state == TYPEWRITER_STATE_PAUSING) {
+      // 计算暂停时长
+      self->stats.pause_duration +=
+          (current_time - self->stats.pause_start_time);
+      self->stats.pause_start_time = 0;
+    }
+    self->state = TYPEWRITER_STATE_TYPING;
+
+    // 防止重复设置定时器
+    if (self->update_timer_id == 0) {
+      self->update_timer_id =
+          g_timeout_add(REFRESH_INTERVAL, update_stat_ui, self);
+    }
+  }
 }
 
 static void record_keystroke(TypewriterWindow *self, guint keyval) {
-    // 记录击键信息
-    if (self->state == TYPEWRITER_STATE_TYPING) {
-        if (keyval == GDK_KEY_BackSpace) {
-            self->stats.backspace_count++;
-        }
-        self->stats.stroke_count++;
-        
-        // 更新击键时间队列
-        guint64 current_time = g_get_monotonic_time();
-        g_queue_push_tail(self->key_time_queue, GSIZE_TO_POINTER(current_time));
-        
-        // 保持队列大小不超过max_queue_size
-        while (g_queue_get_length(self->key_time_queue) > self->max_queue_size) {
-            g_queue_pop_head(self->key_time_queue);
-        }
+  // 记录击键信息
+  if (self->state == TYPEWRITER_STATE_TYPING) {
+    if (keyval == GDK_KEY_BackSpace) {
+      self->stats.backspace_count++;
     }
+    self->stats.stroke_count++;
+
+    // 更新击键时间队列
+    guint64 current_time = g_get_monotonic_time();
+    g_queue_push_tail(self->key_time_queue, GSIZE_TO_POINTER(current_time));
+
+    // 保持队列大小不超过max_queue_size
+    while (g_queue_get_length(self->key_time_queue) > self->max_queue_size) {
+      g_queue_pop_head(self->key_time_queue);
+    }
+  }
 }
 
 // 主处理函数
-gboolean on_key_press(GtkEventControllerKey *controller, guint keyval, guint keycode, 
-                      GdkModifierType state, gpointer user_data) {
-    TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
-    
-    // 处理特殊按键
-    if (handle_special_keys(self, keyval)) {
-        return TRUE;
-    }
-    
-    // 更新状态
-    update_typing_state(self, keyval);
-    
-    // 记录击键
-    record_keystroke(self, keyval);
-    
-    // 清理preedit buffer
-    if (self->preedit_buffer != NULL) {
-        g_free(self->preedit_buffer);
-        self->preedit_buffer = NULL;
-    }
-    
-    return FALSE;
+gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
+                      guint keycode, GdkModifierType state,
+                      gpointer user_data) {
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+
+  if (self->state == TYPEWRITER_STATE_ENDED) {
+    return TRUE;
+  }
+
+  if (self->state == TYPEWRITER_STATE_RETYPE_READY) {
+    self->state = TYPEWRITER_STATE_READY;
+  }
+
+  // 处理特殊按键
+  if (handle_special_keys(self, keyval)) {
+    return TRUE;
+  }
+
+  // 更新状态
+  update_typing_state(self, keyval);
+
+  // 记录击键
+  record_keystroke(self, keyval);
+
+  // 清理preedit buffer
+  if (self->preedit_buffer != NULL) {
+    g_free(self->preedit_buffer);
+    self->preedit_buffer = NULL;
+  }
+
+  return FALSE;
 }
 
 void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
-                                     gpointer user_data) {
+                              gpointer user_data) {
   // start_calculation_cb(user_data);
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
   if (self->state == TYPEWRITER_STATE_ENDED) {
@@ -183,8 +190,9 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   if (tcc - self->stats.total_char_count > 1) {
     self->stats.type_word_count++;
   }
-  self->stats.reform_count +=
-      self->stats.total_char_count > tcc ? self->stats.total_char_count - tcc : 0;
+  self->stats.reform_count += self->stats.total_char_count > tcc
+                                  ? self->stats.total_char_count - tcc
+                                  : 0;
   self->stats.correct_char_count = ccc;
   self->stats.total_char_count = tcc;
   if (control_text[i] == '\0') {
