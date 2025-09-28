@@ -61,7 +61,9 @@ struct _TypewriterWindow {
 
   // 各种统计指标
   guint64 start_time;
-  guint64 duration;
+  guint64 end_time;
+  guint64 pause_start_time;
+  guint64 pause_duration;
   char *article_name;
   guint stroke_count;
   guint correct_char_count;
@@ -105,7 +107,8 @@ static void typewriter_window_init(TypewriterWindow *self) {
   // 初始化状态变量
   self->flag = READY;
   self->start_time = 0;
-  self->duration = 0;
+  self->pause_start_time = 0;
+  self->pause_duration = 0;
   self->stroke_count = 0;
   self->correct_char_count = 0;
   self->total_char_count = 0;
@@ -198,6 +201,9 @@ static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
                              guint keycode, GdkModifierType state,
                              gpointer user_data) {
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  if (self->flag == ENDED) {
+    return TRUE;
+  }
   if (self->flag == RETYPE_READY) {
     self->flag = READY;
   }
@@ -218,8 +224,14 @@ static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
       keyval != GDK_KEY_Super_L && keyval != GDK_KEY_Caps_Lock &&
       keyval != GDK_KEY_Tab) {
     // 判断按键是数字，字母键，符号键
+    gint64 current_time = g_get_monotonic_time();
     if (self->flag == READY) {
-      self->start_time = g_get_monotonic_time();
+      self->start_time = current_time;
+    }
+    if (self->flag == PAUSING) {
+      // 计算暂停时长
+      self->pause_duration += (current_time - self->pause_start_time);
+      self->pause_start_time = 0;
     }
     self->flag = TYPING;
     self->update_timer_id =
@@ -387,37 +399,45 @@ static void on_preedit_changed(GtkTextView *self, gchar *preedit,
 static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
   g_source_remove(win->update_timer_id);
   win->update_timer_id = 0;
-  gtk_text_view_set_editable(GTK_TEXT_VIEW(win->follow), FALSE);
+  gint64 current_time = g_get_monotonic_time();
+  gint64 elapsed_time_ms =
+      (current_time - win->start_time - win->pause_duration) / 1000.0;
 
   // 计算平均指标
   double overall_typing_speed = 0.0;
-  if (win->duration > 0 && win->total_char_count > 0) {
+  if (elapsed_time_ms > 0 && win->total_char_count > 0) {
     // 转换为分钟并计算每分钟字数
-    overall_typing_speed = (win->total_char_count * 60000.0) / win->duration;
+    overall_typing_speed = (win->total_char_count * 60000.0) / elapsed_time_ms;
     gtk_label_set_text(GTK_LABEL(win->speed),
                        g_strdup_printf("%.2f", overall_typing_speed));
   }
 
-  // 显示速度与击键信息
-  double stroke = (double)win->stroke_count * 1000.0 / win->duration;
+  // 显示击键与码长信息
+  double stroke = (double)win->stroke_count * 1000.0 / elapsed_time_ms;
   gtk_label_set_text(GTK_LABEL(win->stroke), g_strdup_printf("%.2f", stroke));
   g_strdup_printf("%d", win->total_char_count);
+  double avg_code_len = (double)win->stroke_count / win->total_char_count;
+  gtk_label_set_text(GTK_LABEL(win->code_len),
+                     g_strdup_printf("%.2f", avg_code_len));
 
   // 显示用时
-  guint elapsed_time_ms = win->duration;
   guint seconds = elapsed_time_ms / 1000;
   guint minutes = seconds / 60;
   seconds = seconds % 60;
   guint milliseconds = elapsed_time_ms % 1000;
 
+  gtk_label_set_text(
+      GTK_LABEL(win->timer),
+      g_strdup_printf("%02u:%02u.%03u", minutes, seconds, milliseconds));
+
   // 打印成绩
   g_print(
       "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 时间%02u:%02u.%03u 回改%d 退格%d "
       "键数%d 打词%.2f%% 输入法:Rime NFLinux跟打器\n",
-      win->article_name, overall_typing_speed, stroke,
-      win->stroke_count * 1.0 / win->total_char_count, win->total_char_count,
-      minutes, seconds, milliseconds, win->reform_count, win->backspace_count,
-      win->stroke_count, win->type_word_count * 100.0 / win->total_char_count);
+      win->article_name, overall_typing_speed, stroke, avg_code_len,
+      win->total_char_count, minutes, seconds, milliseconds, win->reform_count,
+      win->backspace_count, win->stroke_count,
+      win->type_word_count * 100.0 / win->total_char_count);
 }
 
 static void load_css_providers(TypewriterWindow *self) {
@@ -467,7 +487,10 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
     g_regex_match(regex, text, 0, &match_info);
     if (g_match_info_matches(match_info)) {
       win->article_name = g_match_info_fetch(match_info, 3);
-      gtk_label_set_label(GTK_LABEL(win->info), g_strdup_printf("%s-%s", g_match_info_fetch(match_info, 1), win->article_name));
+      gtk_label_set_label(
+          GTK_LABEL(win->info),
+          g_strdup_printf("%s-%s", g_match_info_fetch(match_info, 1),
+                          win->article_name));
       text = g_match_info_fetch(match_info, 2);
       g_free(match_info);
       g_free(regex);
@@ -505,16 +528,14 @@ void load_clipboard(TypewriterWindow *win) {
 
 static gboolean update_stat_ui(gpointer user_data) {
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
-  self->duration += REFRESH_INTERVAL;
-
   if (self->flag != TYPING) {
     return G_SOURCE_CONTINUE;
   }
 
   // 计算已用时间（毫秒）
   gint64 current_time = g_get_monotonic_time();
-  // gint64 elapsed_time_ms = (current_time - self->start_time) / 1000;
-  gint64 elapsed_time_ms = self->duration;
+  gint64 elapsed_time_ms =
+      (current_time - self->start_time - self->pause_duration) / 1000.0;
 
   // 显示用时
   guint seconds = elapsed_time_ms / 1000;
@@ -569,9 +590,11 @@ static gboolean update_stat_ui(gpointer user_data) {
 void typewriter_pause(TypewriterWindow *self) {
   g_assert(TYPEWRITER_IS_WINDOW(self));
   self->flag = PAUSING;
-  // 停止计时器
+  // 停止打字计时器
   g_source_remove(self->update_timer_id);
   self->update_timer_id = 0;
+  // 记录暂停开始时间
+  self->pause_start_time = g_get_monotonic_time();
 }
 
 void typewriter_window_retype(TypewriterWindow *win) {
@@ -589,7 +612,8 @@ void typewriter_window_retype(TypewriterWindow *win) {
   // 重置计数器
   win->flag = RETYPE_READY;
   win->start_time = 0;
-  win->duration = 0;
+  win->pause_start_time = 0;
+  win->pause_duration = 0;
   win->stroke_count = 0;
   win->correct_char_count = 0;
   win->total_char_count = 0;
