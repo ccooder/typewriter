@@ -24,6 +24,7 @@
 
 #include "config.h"
 #include "typewriter-window.h"
+#include "typewriter-load-article.h"
 
 struct _TypewriterApplication {
   GtkApplication parent_instance;
@@ -102,7 +103,7 @@ static void typewriter_application_load_file_action(GSimpleAction *action,
   TypewriterWindow *win = TYPEWRITER_WINDOW(
       gtk_application_get_active_window(GTK_APPLICATION(self)));
 
-  load_file(win);
+  load_article_from_file(win);
 }
 
 static void typewriter_application_load_clipboard_action(GSimpleAction *action,
@@ -113,7 +114,7 @@ static void typewriter_application_load_clipboard_action(GSimpleAction *action,
   g_assert(TYPEWRITER_IS_APPLICATION(self));
   TypewriterWindow *win = TYPEWRITER_WINDOW(
       gtk_application_get_active_window(GTK_APPLICATION(self)));
-  load_clipboard(win);
+  load_article_from_clipboard(win);
 }
 
 static void typewriter_application_retype_action(GSimpleAction *action,

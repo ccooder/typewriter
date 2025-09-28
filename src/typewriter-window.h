@@ -41,21 +41,70 @@ static void on_window_focus_enter(GtkEventControllerFocus *self,
                                   gpointer user_data);
 static void on_window_focus_leave(GtkEventControllerFocus *self,
                                   gpointer user_data);
-static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
-                             guint keycode, GdkModifierType state,
-                             gpointer user_data);
-static void on_follow_buffer_changed(GtkTextBuffer *self, gpointer user_data);
-static void on_preedit_changed(GtkTextView *self, gchar *preedit,
-                               gpointer user_data);
 static void on_type_ended(TypewriterWindow *win, gpointer user_data);
 static void load_css_providers(TypewriterWindow *self);
-static size_t utf8_strlen(const char *s);
-void load_file(TypewriterWindow *win);
-void load_clipboard(TypewriterWindow *win);
-static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
-                                gpointer user_data);
-static gboolean update_stat_ui(gpointer user_data);
 void typewriter_pause(TypewriterWindow *self);
 void typewriter_window_retype(TypewriterWindow *win);
+
+// 建议改为：
+typedef enum {
+  TYPEWRITER_STATE_RETYPE_READY,
+  TYPEWRITER_STATE_READY,
+  TYPEWRITER_STATE_TYPING,
+  TYPEWRITER_STATE_PAUSING,
+  TYPEWRITER_STATE_ENDED
+} TypewriterState;
+
+// 在结构体中创建状态和统计数据结构
+typedef struct {
+  guint64 start_time;
+  guint64 end_time;
+  guint64 pause_start_time;
+  guint64 pause_duration;
+  guint stroke_count;
+  guint correct_char_count;
+  guint total_char_count;
+  guint type_word_count;
+  guint backspace_count;
+  guint reform_count;
+} TypewriterStats;
+
+struct _TypewriterWindow {
+  GtkApplicationWindow parent_instance;
+  GtkCssProvider *colors_provider;
+
+  /* Template widgets */
+  // 对照区
+  GtkWidget *control;
+  // 跟打区
+  GtkWidget *follow;
+  // 顶部状态区
+  // 用时
+  GtkWidget *timer;
+  // 速度
+  GtkWidget *speed;
+  // 击键
+  GtkWidget *stroke;
+  // 码长
+  GtkWidget *code_len;
+  // 总字数
+  GtkWidget *words;
+
+  // 跟打信息区
+  GtkWidget *info;
+
+  // preedit buffer
+  gchar *preedit_buffer;
+  char *article_name;
+
+  guint update_timer_id;
+  // 实时击键速度
+  GQueue *key_time_queue;
+  guint max_queue_size;
+  // 跟打状态
+  TypewriterState state;
+  // 跟打统计数据
+  TypewriterStats stats;
+};
 
 G_END_DECLS

@@ -21,62 +21,8 @@
 #include "typewriter-window.h"
 
 #include "config.h"
-
-enum TypeFlag {
-  RETYPE_READY = 0,
-  READY = 1,
-  TYPING = 2,
-  PAUSING = 3,
-  ENDED = 4
-};
-
-struct _TypewriterWindow {
-  GtkApplicationWindow parent_instance;
-  GtkCssProvider *colors_provider;
-
-  /* Template widgets */
-  // 对照区
-  GtkWidget *control;
-  // 跟打区
-  GtkWidget *follow;
-  // 顶部状态区
-  // 用时
-  GtkWidget *timer;
-  // 速度
-  GtkWidget *speed;
-  // 击键
-  GtkWidget *stroke;
-  // 码长
-  GtkWidget *code_len;
-  // 总字数
-  GtkWidget *words;
-
-  // 跟打信息区
-  GtkWidget *info;
-
-  // preedit buffer
-  gchar *preedit_buffer;
-  // 跟打状态标志
-  gint flag;
-
-  // 各种统计指标
-  guint64 start_time;
-  guint64 end_time;
-  guint64 pause_start_time;
-  guint64 pause_duration;
-  char *article_name;
-  guint stroke_count;
-  guint correct_char_count;
-  guint total_char_count;
-  guint type_word_count;
-  guint backspace_count;
-  guint reform_count;
-  guint update_timer_id;
-
-  // 实时击键速度
-  GQueue *key_time_queue;
-  guint max_queue_size;
-};
+#include "typewriter-input.h"
+#include "typewriter-ui.h"
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
                     GTK_TYPE_APPLICATION_WINDOW)
@@ -105,16 +51,17 @@ static void typewriter_window_init(TypewriterWindow *self) {
   load_css_providers(self);
 
   // 初始化状态变量
-  self->flag = READY;
-  self->start_time = 0;
-  self->pause_start_time = 0;
-  self->pause_duration = 0;
-  self->stroke_count = 0;
-  self->correct_char_count = 0;
-  self->total_char_count = 0;
-  self->type_word_count = 0;
-  self->backspace_count = 0;
-  self->reform_count = 0;
+  self->state = TYPEWRITER_STATE_READY;
+  self->stats.start_time = 0;
+  self->stats.end_time = 0;
+  self->stats.pause_start_time = 0;
+  self->stats.pause_duration = 0;
+  self->stats.stroke_count = 0;
+  self->stats.correct_char_count = 0;
+  self->stats.total_char_count = 0;
+  self->stats.type_word_count = 0;
+  self->stats.backspace_count = 0;
+  self->stats.reform_count = 0;
   self->update_timer_id = 0;
   self->max_queue_size = 16;  // 存储最近16次击键时间
   self->key_time_queue = g_queue_new();
@@ -192,72 +139,9 @@ static void on_window_focus_enter(GtkEventControllerFocus *self,
 static void on_window_focus_leave(GtkEventControllerFocus *self,
                                   gpointer user_data) {
   TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  if (win->flag == TYPING) {
+  if (win->state == TYPEWRITER_STATE_TYPING) {
     typewriter_pause(win);
   }
-}
-
-static gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
-                             guint keycode, GdkModifierType state,
-                             gpointer user_data) {
-  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
-  if (self->flag == ENDED) {
-    return TRUE;
-  }
-  if (self->flag == RETYPE_READY) {
-    self->flag = READY;
-  }
-  if ((self->preedit_buffer == NULL || strlen(self->preedit_buffer) <= 0) &&
-      (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)) {
-    // Return TRUE to indicate that the event has been handled and
-    // should not be propagated further (preventing default newline insertion)
-    if (self->flag == TYPING) {
-      typewriter_pause(self);
-    }
-    return TRUE;
-  }
-
-  if ((self->flag == PAUSING || self->flag == READY) &&
-      keyval != GDK_KEY_Return && keyval != GDK_KEY_KP_Enter &&
-      keyval != GDK_KEY_Escape && keyval != GDK_KEY_Shift_L &&
-      keyval != GDK_KEY_Control_L && keyval != GDK_KEY_Alt_L &&
-      keyval != GDK_KEY_Super_L && keyval != GDK_KEY_Caps_Lock &&
-      keyval != GDK_KEY_Tab) {
-    // 判断按键是数字，字母键，符号键
-    gint64 current_time = g_get_monotonic_time();
-    if (self->flag == READY) {
-      self->start_time = current_time;
-    }
-    if (self->flag == PAUSING) {
-      // 计算暂停时长
-      self->pause_duration += (current_time - self->pause_start_time);
-      self->pause_start_time = 0;
-    }
-    self->flag = TYPING;
-    self->update_timer_id =
-        g_timeout_add(REFRESH_INTERVAL, update_stat_ui, self);
-  }
-
-  if (self->flag == TYPING) {
-    if (keyval == GDK_KEY_BackSpace) {
-      self->backspace_count++;
-    }
-    self->stroke_count++;
-    guint64 current_time = g_get_monotonic_time();
-    g_queue_push_tail(self->key_time_queue, GSIZE_TO_POINTER(current_time));
-
-    // 保持队列大小不超过max_queue_size
-    if (g_queue_get_length(self->key_time_queue) > self->max_queue_size) {
-      g_queue_pop_head(self->key_time_queue);
-    }
-  }
-
-  if (self->preedit_buffer != NULL) {
-    g_free(self->preedit_buffer);
-    self->preedit_buffer = NULL;
-  }
-  // For other keys, return FALSE to allow default processing
-  return FALSE;
 }
 
 // ###############################
@@ -309,127 +193,30 @@ static void start_calculation_cb(gpointer user_data) {
   g_object_unref(task);
 }
 
-static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
-                                     gpointer user_data) {
-  // start_calculation_cb(user_data);
-  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
-  if (self->flag == ENDED) {
-    return;
-  }
-  GtkTextIter start, end;
-  gtk_text_buffer_get_start_iter(follow_buffer, &start);
-  gtk_text_buffer_get_end_iter(follow_buffer, &end);
-  gchar *follow_text =
-      gtk_text_buffer_get_text(follow_buffer, &start, &end, FALSE);
-
-  GtkTextView *control = GTK_TEXT_VIEW(self->control);
-  GtkTextBuffer *control_buffer = gtk_text_view_get_buffer(control);
-  gtk_text_buffer_get_start_iter(control_buffer, &start);
-  gtk_text_buffer_get_end_iter(control_buffer, &end);
-  gchar *control_text =
-      gtk_text_buffer_get_text(control_buffer, &start, &end, FALSE);
-
-  gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
-
-  GtkTextTag *correct_tag = gtk_text_buffer_create_tag(
-      control_buffer, NULL, "background", "green", NULL);
-  GtkTextTag *incorrect_tag = gtk_text_buffer_create_tag(
-      control_buffer, NULL, "background", "red", "foreground", "white", NULL);
-
-  GtkTextIter char_iter;
-  gtk_text_buffer_get_start_iter(follow_buffer, &char_iter);
-  // 临时变量,ccc为正确打字数，tcc为总打字数
-  guint ccc = 0;
-  guint tcc = 0;
-  int i;
-  for (i = 0; !gtk_text_iter_is_end(&char_iter) && control_text[i] != '\0';) {
-    tcc++;
-    GtkTextIter start_iter = char_iter;
-    gtk_text_iter_forward_char(&char_iter);
-
-    // Get the character from the typed buffer and reference text
-    char *typed_char =
-        gtk_text_buffer_get_text(follow_buffer, &start_iter, &char_iter, FALSE);
-    gunichar typed_unichar = g_utf8_get_char(typed_char);
-    gunichar ref_unichar = g_utf8_get_char(&control_text[i]);
-
-    // Compare and apply the correct tag
-    GtkTextIter control_start_iter, control_end_iter;
-    gtk_text_buffer_get_iter_at_offset(control_buffer, &control_start_iter,
-                                       gtk_text_iter_get_offset(&start_iter));
-    gtk_text_buffer_get_iter_at_offset(control_buffer, &control_end_iter,
-                                       gtk_text_iter_get_offset(&char_iter));
-    if (typed_unichar == ref_unichar) {
-      gtk_text_buffer_apply_tag(control_buffer, correct_tag,
-                                &control_start_iter, &control_end_iter);
-      ccc++;
-    } else {
-      gtk_text_buffer_apply_tag(control_buffer, incorrect_tag,
-                                &control_start_iter, &control_end_iter);
-    }
-
-    // Move to the next character in the reference text
-    i += g_unichar_to_utf8(ref_unichar, NULL);
-    g_free(typed_char);
-  }
-  gtk_text_buffer_get_iter_at_offset(control_buffer, &char_iter,
-                                     gtk_text_iter_get_offset(&char_iter));
-  gtk_text_iter_forward_chars(&char_iter, 7);
-  GdkRectangle location;
-  gtk_text_view_get_iter_location(control, &char_iter, &location);
-  GdkRectangle visible_rect;
-  gtk_text_view_get_visible_rect(control, &visible_rect);
-  if (!gdk_rectangle_contains_point(&visible_rect, location.x + location.width,
-                                    location.y + location.height)) {
-    gtk_text_view_scroll_to_iter(control, &char_iter, 0.0, TRUE, 0.5, 0.5);
-  }
-
-  if (tcc - self->total_char_count > 1) {
-    self->type_word_count++;
-  }
-  self->reform_count +=
-      self->total_char_count > tcc ? self->total_char_count - tcc : 0;
-  self->correct_char_count = ccc;
-  self->total_char_count = tcc;
-  if (control_text[i] == '\0') {
-    self->flag = ENDED;
-    g_signal_emit_by_name(self, "TYPE_ENDED");
-  }
-
-  // Handle cases where one string is longer than the other
-  // ... apply tags for remaining characters if needed
-  g_free(follow_text);
-  g_free(control_text);
-}
-
-static void on_preedit_changed(GtkTextView *self, gchar *preedit,
-                               gpointer user_data) {
-  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  win->preedit_buffer = g_malloc(sizeof(char) * (strlen(preedit) + 1));
-  strcpy(win->preedit_buffer, preedit);
-}
-
 static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
   g_source_remove(win->update_timer_id);
   win->update_timer_id = 0;
   gint64 current_time = g_get_monotonic_time();
   gint64 elapsed_time_ms =
-      (current_time - win->start_time - win->pause_duration) / 1000.0;
+      (current_time - win->stats.start_time - win->stats.pause_duration) /
+      1000.0;
 
   // 计算平均指标
   double overall_typing_speed = 0.0;
-  if (elapsed_time_ms > 0 && win->total_char_count > 0) {
+  if (elapsed_time_ms > 0 && win->stats.total_char_count > 0) {
     // 转换为分钟并计算每分钟字数
-    overall_typing_speed = (win->total_char_count * 60000.0) / elapsed_time_ms;
+    overall_typing_speed =
+        (win->stats.total_char_count * 60000.0) / elapsed_time_ms;
     gtk_label_set_text(GTK_LABEL(win->speed),
                        g_strdup_printf("%.2f", overall_typing_speed));
   }
 
   // 显示击键与码长信息
-  double stroke = (double)win->stroke_count * 1000.0 / elapsed_time_ms;
+  double stroke = (double)win->stats.stroke_count * 1000.0 / elapsed_time_ms;
   gtk_label_set_text(GTK_LABEL(win->stroke), g_strdup_printf("%.2f", stroke));
-  g_strdup_printf("%d", win->total_char_count);
-  double avg_code_len = (double)win->stroke_count / win->total_char_count;
+  g_strdup_printf("%d", win->stats.total_char_count);
+  double avg_code_len =
+      (double)win->stats.stroke_count / win->stats.total_char_count;
   gtk_label_set_text(GTK_LABEL(win->code_len),
                      g_strdup_printf("%.2f", avg_code_len));
 
@@ -448,9 +235,10 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
       "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 时间%02u:%02u.%03u 回改%d 退格%d "
       "键数%d 打词%.2f%% 输入法:Rime NFLinux跟打器\n",
       win->article_name, overall_typing_speed, stroke, avg_code_len,
-      win->total_char_count, minutes, seconds, milliseconds, win->reform_count,
-      win->backspace_count, win->stroke_count,
-      win->type_word_count * 100.0 / win->total_char_count);
+      win->stats.total_char_count, minutes, seconds, milliseconds,
+      win->stats.reform_count, win->stats.backspace_count,
+      win->stats.stroke_count,
+      win->stats.type_word_count * 100.0 / win->stats.total_char_count);
 }
 
 static void load_css_providers(TypewriterWindow *self) {
@@ -466,155 +254,14 @@ static void load_css_providers(TypewriterWindow *self) {
       GTK_STYLE_PROVIDER_PRIORITY_APPLICATION + 1);
 }
 
-static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
-                                gpointer user_data) {
-  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  GError *error = NULL;
-
-  // 读取文本内容
-  char *text = gdk_clipboard_read_text_finish(clipboard, result, &error);
-
-  if (error != NULL) {
-    g_printerr("Error reading clipboard: %s\n", error->message);
-    g_error_free(error);
-    return;
-  }
-
-  if (text == NULL) {
-    return;
-  }
-  // 成功获取到文本，可以在这里进行处理
-  gtk_label_set_text(GTK_LABEL(win->info), "来自剪贴板");
-  win->article_name = "来自剪贴板";
-  // 首先检测是否赛文格式
-  GError *regex_error = NULL;
-  GRegex *regex = g_regex_new("(.*?)\\n(.*?)\\n-----(第\\d+段)-共\\d+字.*?",
-                              G_REGEX_DEFAULT, 0, &regex_error);
-  if (regex_error != NULL) {
-    g_printerr("Error compiling regex: %s\n", regex_error->message);
-    g_error_free(regex_error);
-  }
-
-  if (regex_error == NULL) {
-    GMatchInfo *match_info = NULL;
-    g_regex_match(regex, text, 0, &match_info);
-    if (g_match_info_matches(match_info)) {
-      win->article_name = g_match_info_fetch(match_info, 3);
-      gtk_label_set_label(
-          GTK_LABEL(win->info),
-          g_strdup_printf("%s-%s", g_match_info_fetch(match_info, 1),
-                          win->article_name));
-      text = g_match_info_fetch(match_info, 2);
-      g_free(match_info);
-      g_free(regex);
-    }
-  }
-
-  regex = g_regex_new("\\s", G_REGEX_DEFAULT, 0, &regex_error);
-  if (regex_error != NULL) {
-    g_printerr("Error compiling regex: %s\n", regex_error->message);
-    g_error_free(regex_error);
-  } else {
-    text = g_regex_replace(regex, text, -1, 0, "", 0 , &regex_error);
-  }
-  GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->control));
-  gtk_text_buffer_set_text(buffer, text, -1);
-
-  // 计算文本长度
-
-  int text_length = g_utf8_strlen(text, -1);
-  // 更新总字数标签
-  gtk_label_set_text(GTK_LABEL(win->words),
-                     g_strdup_printf("共%d字", text_length));
-
-  // 不要忘记释放文本资源
-  g_free(text);
-
-  typewriter_window_retype(win);
-}
-
-void load_file(TypewriterWindow *win) { g_assert(TYPEWRITER_IS_WINDOW(win)); }
-
-void load_clipboard(TypewriterWindow *win) {
-  g_assert(TYPEWRITER_IS_WINDOW(win));
-
-  GdkDisplay *display;
-
-  display = gtk_widget_get_display(GTK_WIDGET(win));
-  GdkClipboard *clipboard = gdk_display_get_clipboard(display);
-  gdk_clipboard_read_text_async(clipboard, NULL,
-                                (GAsyncReadyCallback)load_clipboard_text, win);
-}
-
-static gboolean update_stat_ui(gpointer user_data) {
-  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
-  if (self->flag != TYPING) {
-    return G_SOURCE_CONTINUE;
-  }
-
-  // 计算已用时间（毫秒）
-  gint64 current_time = g_get_monotonic_time();
-  gint64 elapsed_time_ms =
-      (current_time - self->start_time - self->pause_duration) / 1000.0;
-
-  // 显示用时
-  guint seconds = elapsed_time_ms / 1000;
-  guint minutes = seconds / 60;
-  seconds = seconds % 60;
-  guint milliseconds = elapsed_time_ms % 1000;
-
-  gtk_label_set_text(
-      GTK_LABEL(self->timer),
-      g_strdup_printf("%02u:%02u.%03u", minutes, seconds, milliseconds));
-
-  // 计算实时击键速度（最近几次击键的平均速度）
-  double realtime_stroke_speed = 0.0;
-
-  if (g_queue_get_length(self->key_time_queue) >= 2) {
-    gint64 first_time =
-        GPOINTER_TO_SIZE(g_queue_peek_head(self->key_time_queue));
-    gint64 time_diff_us = (current_time - first_time);
-
-    // 确保时间差不为0
-    if (time_diff_us > 0) {
-      // 计算每秒击键数
-      realtime_stroke_speed = (g_queue_get_length(self->key_time_queue) - 1) *
-                              1000000.0 / time_diff_us;
-    }
-
-    // 计算码长
-    if (self->total_char_count > 0) {
-      gdouble code_len = self->stroke_count * 1.0 / self->total_char_count;
-      gtk_label_set_text(GTK_LABEL(self->code_len),
-                         g_strdup_printf("%.2f", code_len));
-    }
-  }
-
-  // 计算整体打字速度（正确字符数/时间，每分钟字数）
-  double overall_typing_speed = 0.0;
-
-  if (elapsed_time_ms > 0 && self->total_char_count > 0) {
-    // 转换为分钟并计算每分钟字数
-    overall_typing_speed = (self->total_char_count * 60000.0) / elapsed_time_ms;
-  }
-
-  // 显示速度与击键信息
-  gtk_label_set_text(GTK_LABEL(self->speed),
-                     g_strdup_printf("%.2f", overall_typing_speed));
-  gtk_label_set_text(GTK_LABEL(self->stroke),
-                     g_strdup_printf("%.2f", realtime_stroke_speed));
-
-  return G_SOURCE_CONTINUE;
-}
-
 void typewriter_pause(TypewriterWindow *self) {
   g_assert(TYPEWRITER_IS_WINDOW(self));
-  self->flag = PAUSING;
+  self->state = TYPEWRITER_STATE_PAUSING;
   // 停止打字计时器
   g_source_remove(self->update_timer_id);
   self->update_timer_id = 0;
   // 记录暂停开始时间
-  self->pause_start_time = g_get_monotonic_time();
+  self->stats.pause_start_time = g_get_monotonic_time();
 }
 
 void typewriter_window_retype(TypewriterWindow *win) {
@@ -630,16 +277,17 @@ void typewriter_window_retype(TypewriterWindow *win) {
   g_queue_clear(win->key_time_queue);
 
   // 重置计数器
-  win->flag = RETYPE_READY;
-  win->start_time = 0;
-  win->pause_start_time = 0;
-  win->pause_duration = 0;
-  win->stroke_count = 0;
-  win->correct_char_count = 0;
-  win->total_char_count = 0;
-  win->type_word_count = 0;
-  win->backspace_count = 0;
-  win->reform_count = 0;
+  win->state = TYPEWRITER_STATE_RETYPE_READY;
+  win->stats.start_time = 0;
+  win->stats.end_time = 0;
+  win->stats.pause_start_time = 0;
+  win->stats.pause_duration = 0;
+  win->stats.stroke_count = 0;
+  win->stats.correct_char_count = 0;
+  win->stats.total_char_count = 0;
+  win->stats.type_word_count = 0;
+  win->stats.backspace_count = 0;
+  win->stats.reform_count = 0;
   win->update_timer_id = 0;
 
   // 重置UI显示
@@ -661,5 +309,6 @@ void typewriter_window_retype(TypewriterWindow *win) {
   gtk_text_buffer_get_start_iter(control_buffer, &start);
   gtk_text_buffer_get_end_iter(control_buffer, &end);
   gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
-  gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(win->control), &start, 0, TRUE, 0.5, 0.5);
+  gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(win->control), &start, 0, TRUE,
+                               0.5, 0.5);
 }

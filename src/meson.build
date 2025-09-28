@@ -2,6 +2,9 @@ typewriter_sources = [
   'main.c',
   'typewriter-application.c',
   'typewriter-window.c',
+  'typewriter-ui.c',
+  'typewriter-input.c',
+  'typewriter-load-article.c',
 ]
 
 typewriter_deps = [
