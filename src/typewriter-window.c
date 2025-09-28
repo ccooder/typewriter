@@ -334,7 +334,7 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   GtkTextTag *correct_tag = gtk_text_buffer_create_tag(
       control_buffer, NULL, "background", "green", NULL);
   GtkTextTag *incorrect_tag = gtk_text_buffer_create_tag(
-      control_buffer, NULL, "background", "red", NULL);
+      control_buffer, NULL, "background", "red", "foreground", "white", NULL);
 
   GtkTextIter char_iter;
   gtk_text_buffer_get_start_iter(follow_buffer, &char_iter);
@@ -372,6 +372,17 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
     i += g_unichar_to_utf8(ref_unichar, NULL);
     g_free(typed_char);
   }
+  gtk_text_buffer_get_iter_at_offset(control_buffer, &char_iter,
+                                     gtk_text_iter_get_offset(&char_iter));
+  gtk_text_iter_forward_chars(&char_iter, 7);
+  GdkRectangle location;
+  gtk_text_view_get_iter_location(control, &char_iter, &location);
+  GdkRectangle visible_rect;
+  gtk_text_view_get_visible_rect(control, &visible_rect);
+  if (!gdk_rectangle_contains_point(&visible_rect, location.x + location.width, location.y + location.height)) {
+    gtk_text_view_scroll_to_iter(control, &char_iter, 0.0, TRUE, 0.5, 0.5);
+  }
+
   if (tcc - self->total_char_count > 1) {
     self->type_word_count++;
   }
@@ -383,6 +394,7 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
     self->flag = ENDED;
     g_signal_emit_by_name(self, "TYPE_ENDED");
   }
+
   // Handle cases where one string is longer than the other
   // ... apply tags for remaining characters if needed
   g_free(follow_text);

@@ -115,7 +115,7 @@
                 <property name="editable">False</property>
                 <property name="hexpand">True</property>
                 <property name="vexpand">True</property>
-                <property name="wrap-mode">char</property>
+                <property name="wrap-mode">word-char</property>
               </object>
             </child>
             <layout>
@@ -155,7 +155,7 @@
                 <property name="css-classes">follow</property>
                 <property name="hexpand">True</property>
                 <property name="vexpand">True</property>
-                <property name="wrap-mode">char</property>
+                <property name="wrap-mode">word-char</property>
               </object>
             </child>
             <layout>

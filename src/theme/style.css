@@ -24,7 +24,7 @@
     border-bottom-left-radius: 5px;
     border-bottom-right-radius: 5px;
     font-size: 24px;
-    line-height: 24px;
+    line-height: 1;
     background-color: #eee;
     padding: 0 3px;
 }
