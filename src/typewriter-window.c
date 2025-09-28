@@ -379,7 +379,8 @@ static void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   gtk_text_view_get_iter_location(control, &char_iter, &location);
   GdkRectangle visible_rect;
   gtk_text_view_get_visible_rect(control, &visible_rect);
-  if (!gdk_rectangle_contains_point(&visible_rect, location.x + location.width, location.y + location.height)) {
+  if (!gdk_rectangle_contains_point(&visible_rect, location.x + location.width,
+                                    location.y + location.height)) {
     gtk_text_view_scroll_to_iter(control, &char_iter, 0.0, TRUE, 0.5, 0.5);
   }
 
@@ -509,6 +510,13 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
     }
   }
 
+  regex = g_regex_new("\\s", G_REGEX_DEFAULT, 0, &regex_error);
+  if (regex_error != NULL) {
+    g_printerr("Error compiling regex: %s\n", regex_error->message);
+    g_error_free(regex_error);
+  } else {
+    text = g_regex_replace(regex, text, -1, 0, "", 0 , &regex_error);
+  }
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->control));
   gtk_text_buffer_set_text(buffer, text, -1);
 
@@ -521,6 +529,8 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
 
   // 不要忘记释放文本资源
   g_free(text);
+
+  typewriter_window_retype(win);
 }
 
 void load_file(TypewriterWindow *win) { g_assert(TYPEWRITER_IS_WINDOW(win)); }
@@ -534,8 +544,6 @@ void load_clipboard(TypewriterWindow *win) {
   GdkClipboard *clipboard = gdk_display_get_clipboard(display);
   gdk_clipboard_read_text_async(clipboard, NULL,
                                 (GAsyncReadyCallback)load_clipboard_text, win);
-
-  typewriter_window_retype(win);
 }
 
 static gboolean update_stat_ui(gpointer user_data) {
@@ -653,4 +661,5 @@ void typewriter_window_retype(TypewriterWindow *win) {
   gtk_text_buffer_get_start_iter(control_buffer, &start);
   gtk_text_buffer_get_end_iter(control_buffer, &end);
   gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
+  gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(win->control), &start, 0, TRUE, 0.5, 0.5);
 }
