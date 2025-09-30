@@ -311,4 +311,5 @@ void typewriter_window_retype(TypewriterWindow *win) {
   gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
   gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(win->control), &start, 0, TRUE,
                                0.5, 0.5);
+  gtk_widget_grab_focus(win->follow);
 }
