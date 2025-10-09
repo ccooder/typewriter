@@ -27,7 +27,7 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
   win->article_name = "来自剪贴板";
   // 首先检测是否赛文格式
   GError *regex_error = NULL;
-  GRegex *regex = g_regex_new("(.*?)\\n(.*?)\\n-----(第\\d+段)-共\\d+字.*?",
+  GRegex *regex = g_regex_new("(.*?)\\n(.*?)\\n-----(第\\d+段).*?",
                               G_REGEX_DEFAULT, 0, &regex_error);
   if (regex_error != NULL) {
     g_printerr("Error compiling regex: %s\n", regex_error->message);
