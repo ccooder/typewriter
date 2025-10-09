@@ -34,7 +34,7 @@
                 <property name="css-classes">timer</property>
                 <property name="has-tooltip">True</property>
                 <property name="hexpand">True</property>
-                <property name="label">00:00</property>
+                <property name="label">00:00.000</property>
                 <property name="single-line-mode">True</property>
                 <property name="tooltip-text">计时</property>
               </object>

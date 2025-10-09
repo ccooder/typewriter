@@ -309,7 +309,13 @@ void typewriter_window_retype(TypewriterWindow *win) {
   gtk_text_buffer_get_start_iter(control_buffer, &start);
   gtk_text_buffer_get_end_iter(control_buffer, &end);
   gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
-  gtk_text_view_scroll_to_iter(GTK_TEXT_VIEW(win->control), &start, 0, TRUE,
-                               0.5, 0.5);
   gtk_widget_grab_focus(win->follow);
+
+  GtkTextMark *control_start_mark =
+      gtk_text_buffer_create_mark(control_buffer, NULL, &start, TRUE);
+  gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(win->control), control_start_mark,
+                               0, TRUE, 0, 0);
+  // gtk_text_view_backward_display_line_start(GTK_TEXT_VIEW(win->control),
+                                            // &start);
+  gtk_text_buffer_delete_mark(control_buffer, control_start_mark);
 }
