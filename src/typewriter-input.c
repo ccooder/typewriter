@@ -17,6 +17,7 @@ static gboolean handle_special_keys(TypewriterWindow *self, guint keyval) {
   // 处理特殊按键逻辑
   if ((self->preedit_buffer == NULL || strlen(self->preedit_buffer) <= 0) &&
       (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)) {
+    self->stats.enter_count++;
     if (self->state == TYPEWRITER_STATE_TYPING) {
       typewriter_pause(self);
     }
@@ -189,6 +190,8 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
 
   if (tcc - self->stats.total_char_count > 1) {
     self->stats.type_word_count++;
+  } else if (tcc - self->stats.total_char_count == 1) {
+    self->stats.type_char_count++;
   }
   self->stats.reform_count += self->stats.total_char_count > tcc
                                   ? self->stats.total_char_count - tcc

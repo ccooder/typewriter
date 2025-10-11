@@ -59,8 +59,10 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->stats.stroke_count = 0;
   self->stats.correct_char_count = 0;
   self->stats.total_char_count = 0;
+  self->stats.type_char_count = 0;
   self->stats.type_word_count = 0;
   self->stats.backspace_count = 0;
+  self->stats.enter_count = 0;
   self->stats.reform_count = 0;
   self->update_timer_id = 0;
   self->max_queue_size = 16;  // 存储最近16次击键时间
@@ -232,13 +234,15 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
 
   // 打印成绩
   g_print(
-      "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 时间%02u:%02u.%03u 回改%d 退格%d "
-      "键数%d 打词%.2f%% 输入法:Rime NFLinux跟打器\n",
+      "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 错字%d 时间%02u:%02u.%03u 回改%d "
+      "退格%d 回车%d 键数%d 打词%.2f%% 输入法:Rime·98五笔 NFLinux跟打器\n",
       win->article_name, overall_typing_speed, stroke, avg_code_len,
-      win->stats.total_char_count, minutes, seconds, milliseconds,
-      win->stats.reform_count, win->stats.backspace_count,
-      win->stats.stroke_count,
-      win->stats.type_word_count * 100.0 / win->stats.total_char_count);
+      win->stats.total_char_count,
+      win->stats.total_char_count - win->stats.correct_char_count, minutes,
+      seconds, milliseconds,  win->stats.reform_count,
+      win->stats.backspace_count, win->stats.enter_count, win->stats.stroke_count,
+      win->stats.type_word_count * 100.0 /
+          (win->stats.type_char_count + win->stats.type_word_count));
 }
 
 static void load_css_providers(TypewriterWindow *self) {
@@ -285,8 +289,10 @@ void typewriter_window_retype(TypewriterWindow *win) {
   win->stats.stroke_count = 0;
   win->stats.correct_char_count = 0;
   win->stats.total_char_count = 0;
+  win->stats.type_char_count = 0;
   win->stats.type_word_count = 0;
   win->stats.backspace_count = 0;
+  win->stats.enter_count = 0;
   win->stats.reform_count = 0;
   win->update_timer_id = 0;
 
@@ -314,7 +320,7 @@ void typewriter_window_retype(TypewriterWindow *win) {
   GtkTextMark *control_start_mark =
       gtk_text_buffer_create_mark(control_buffer, NULL, &start, TRUE);
   gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(win->control), control_start_mark,
-                               0, TRUE, 0, 0);
+                               0.1, TRUE, 0, 0);
   // gtk_text_view_backward_display_line_start(GTK_TEXT_VIEW(win->control),
                                             // &start);
   gtk_text_buffer_delete_mark(control_buffer, control_start_mark);

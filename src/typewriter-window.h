@@ -64,8 +64,10 @@ typedef struct {
   guint stroke_count;
   guint correct_char_count;
   guint total_char_count;
+  guint type_char_count;
   guint type_word_count;
   guint backspace_count;
+  guint enter_count;
   guint reform_count;
 } TypewriterStats;
 
