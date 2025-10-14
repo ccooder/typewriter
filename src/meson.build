@@ -9,6 +9,7 @@ typewriter_sources = [
 
 typewriter_deps = [
   dependency('gtk4'),
+  dependency('x11'),
 ]
 
 typewriter_sources += gnome.compile_resources('typewriter-resources',

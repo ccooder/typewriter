@@ -185,7 +185,7 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   gtk_text_view_get_visible_rect(control, &visible_rect);
   if (!gdk_rectangle_contains_point(&visible_rect, location.x + location.width,
                                     location.y + location.height)) {
-    gtk_text_view_scroll_to_iter(control, &char_iter, 0.0, TRUE, 0.5, 0.5);
+    gtk_text_view_scroll_to_iter(control, &char_iter, 0.1, TRUE, 0.5, 0.5);
   }
 
   if (tcc - self->stats.total_char_count > 1) {
@@ -198,6 +198,12 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
                                   : 0;
   self->stats.correct_char_count = ccc;
   self->stats.total_char_count = tcc;
+
+  // 更新进度条
+  double progress =
+      (double)self->stats.total_char_count / self->stats.text_length;
+  gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(self->progressbar), progress);
+
   if (control_text[i] == '\0') {
     self->state = TYPEWRITER_STATE_ENDED;
     g_signal_emit_by_name(self, "TYPE_ENDED");

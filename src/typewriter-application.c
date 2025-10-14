@@ -117,6 +117,17 @@ static void typewriter_application_load_clipboard_action(GSimpleAction *action,
   load_article_from_clipboard(win);
 }
 
+static void typewriter_application_load_qq_group_action(GSimpleAction *action,
+                                                 GVariant *parameter,
+                                                 gpointer user_data) {
+  TypewriterApplication *self = user_data;
+
+  g_assert(TYPEWRITER_IS_APPLICATION(self));
+  TypewriterWindow *win = TYPEWRITER_WINDOW(
+      gtk_application_get_active_window(GTK_APPLICATION(self)));
+  load_article_from_qq_group(win);
+}
+
 static void typewriter_application_retype_action(GSimpleAction *action,
                                                  GVariant *parameter,
                                                  gpointer user_data) {
@@ -133,6 +144,7 @@ static void typewriter_application_retype_action(GSimpleAction *action,
 static const GActionEntry app_actions[] = {
     {"load_file", typewriter_application_load_file_action},
     {"load_clipboard", typewriter_application_load_clipboard_action},
+    {"load_qq_group", typewriter_application_load_qq_group_action},
     {"retype", typewriter_application_retype_action},
     {"quit", typewriter_application_quit_action},
     {"about", typewriter_application_about_action},
@@ -151,4 +163,7 @@ static void typewriter_application_init(TypewriterApplication *self) {
   gtk_application_set_accels_for_action(GTK_APPLICATION(self),
                                         "app.retype",
                                         (const char *[]){"F3", NULL});
+  gtk_application_set_accels_for_action(GTK_APPLICATION(self),
+                                        "app.load_qq_group",
+                                        (const char *[]){"F5", NULL});
 }

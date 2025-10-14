@@ -92,6 +92,21 @@
         </child>
         <child>
           <object class="GtkBox">
+            <child>
+              <object class="GtkProgressBar" id="progressbar">
+                <property name="css-classes">progressbar</property>
+                <property name="hexpand">True</property>
+                <property name="ellipsize">0</property>
+              </object>
+            </child>
+            <layout>
+              <property name="column">0</property>
+              <property name="row">1</property>
+            </layout>
+          </object>
+        </child>
+        <child>
+          <object class="GtkBox">
             <property name="css-classes">info_box</property>
             <property name="height-request">20</property>
             <child>
@@ -102,7 +117,7 @@
             </child>
             <layout>
               <property name="column">0</property>
-              <property name="row">1</property>
+              <property name="row">2</property>
             </layout>
           </object>
         </child>
@@ -120,7 +135,7 @@
             </child>
             <layout>
               <property name="column">0</property>
-              <property name="row">2</property>
+              <property name="row">3</property>
             </layout>
           </object>
         </child>
@@ -144,7 +159,7 @@
             </child>
             <layout>
               <property name="column">0</property>
-              <property name="row">3</property>
+              <property name="row">4</property>
             </layout>
           </object>
         </child>
@@ -160,7 +175,7 @@
             </child>
             <layout>
               <property name="column">0</property>
-              <property name="row">4</property>
+              <property name="row">5</property>
             </layout>
           </object>
         </child>
@@ -180,6 +195,10 @@
       <item>
         <attribute name="action">app.load_clipboard</attribute>
         <attribute name="label" translatable="yes">_Load Clipboard</attribute>
+      </item>
+      <item>
+        <attribute name="action">app.load_qq_group</attribute>
+        <attribute name="label" translatable="yes">_Load QQ Group</attribute>
       </item>
       <item>
         <attribute name="action">win.show-help-overlay</attribute>

@@ -41,6 +41,8 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
                                        code_len);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, words);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, info);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, progressbar);
+
 
   g_signal_new("TYPE_ENDED", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST, 0,
                NULL, NULL, NULL, G_TYPE_NONE, 0);
@@ -57,6 +59,7 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->stats.pause_start_time = 0;
   self->stats.pause_duration = 0;
   self->stats.stroke_count = 0;
+  self->stats.text_length = 0;
   self->stats.correct_char_count = 0;
   self->stats.total_char_count = 0;
   self->stats.type_char_count = 0;
@@ -102,11 +105,12 @@ void typewriter_window_open(TypewriterWindow *win) {
   g_assert(TYPEWRITER_IS_WINDOW(win));
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->control));
   char *welcome =
-      "欢迎您使用牛逢路的Linux版跟打器，快捷键如下：F3重打，Alt+"
+      "欢迎您使用牛逢路的Linux版跟打器，快捷键如下：F3重打，F5从QQ群载文，Alt+"
       "E从剪贴板载文，F6从本地文件载文，Ctrl+Q退出。";
 
   win->article_name = "欢迎语";
   glong welcome_length = g_utf8_strlen(welcome, -1);
+  win->stats.text_length = welcome_length;
   gtk_label_set_text(GTK_LABEL(win->words),
                      g_strdup_printf("共%ld字", welcome_length));
 

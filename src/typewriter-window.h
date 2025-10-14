@@ -63,6 +63,7 @@ typedef struct {
   guint64 pause_duration;
   guint stroke_count;
   guint correct_char_count;
+  guint text_length;
   guint total_char_count;
   guint type_char_count;
   guint type_word_count;
@@ -94,6 +95,9 @@ struct _TypewriterWindow {
 
   // 跟打信息区
   GtkWidget *info;
+
+  // 进度条
+  GtkWidget *progressbar;
 
   // preedit buffer
   gchar *preedit_buffer;

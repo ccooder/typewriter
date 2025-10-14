@@ -4,6 +4,8 @@
 
 #include "typewriter-load-article.h"
 #include "typewriter-window.h"
+#include <X11/Xlib.h>
+#include <X11/Xatom.h>
 
 static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
                                 gpointer user_data) {
@@ -60,8 +62,8 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
   gtk_text_buffer_set_text(buffer, text, -1);
 
   // 计算文本长度
-
   int text_length = g_utf8_strlen(text, -1);
+  win->stats.text_length = text_length;
   // 更新总字数标签
   gtk_label_set_text(GTK_LABEL(win->words),
                      g_strdup_printf("共%d字", text_length));
@@ -83,4 +85,45 @@ void load_article_from_clipboard(TypewriterWindow *win) {
   GdkClipboard *clipboard = gdk_display_get_clipboard(display);
   gdk_clipboard_read_text_async(clipboard, NULL,
                                 (GAsyncReadyCallback)load_clipboard_text, win);
+}
+
+void load_article_from_qq_group(TypewriterWindow *win) {
+  g_assert(TYPEWRITER_IS_WINDOW(win));
+  g_print("加载QQ群文章");
+  Display *display = XOpenDisplay(NULL);
+  if (!display) {
+    g_print("Cannot open display\n");
+  }
+  Window root = DefaultRootWindow(display);
+
+  Atom net_client_list = XInternAtom(display, "_NET_CLIENT_LIST_STACKING", False);
+  Atom actual_type;
+  int actual_format;
+  unsigned long nitems;
+  unsigned long bytes_after;
+  unsigned char *prop_return = NULL;
+
+  XGetWindowProperty(display, root, net_client_list, 0, (~0L), False,
+                     XA_WINDOW, &actual_type, &actual_format,
+                     &nitems, &bytes_after, &prop_return);
+
+  Window *windows = (Window *)prop_return;
+  Window qq_window = None;
+  for (unsigned int i = 0; i < nitems; ++i) {
+    char *window_name;
+    if (XFetchName(display, windows[i], &window_name)) {
+      printf("Window ID: %lu, Name: %s\n", windows[i], window_name);
+      if (g_str_has_prefix(window_name, "Calculator")) {
+        printf("找到QQ窗口: %lu, Name: %s\n", windows[i], window_name);
+        qq_window = windows[i];
+      }
+      XFree(window_name);
+    }
+  }
+  if (qq_window != None) {
+    printf("QQ窗口ID: %lu\n", qq_window);
+    XRaiseWindow(display, qq_window);
+    XSetInputFocus(display, qq_window, RevertToParent, CurrentTime);
+    XFlush(display);
+  }
 }
