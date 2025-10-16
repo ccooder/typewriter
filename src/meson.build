@@ -5,11 +5,13 @@ typewriter_sources = [
   'typewriter-ui.c',
   'typewriter-input.c',
   'typewriter-load-article.c',
+  'x11_util.c',
 ]
 
 typewriter_deps = [
   dependency('gtk4'),
   dependency('x11'),
+  dependency('xtst'),
 ]
 
 typewriter_sources += gnome.compile_resources('typewriter-resources',

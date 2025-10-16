@@ -19,7 +19,7 @@
  */
 
 #include "typewriter-window.h"
-
+#include "x11_util.h"
 #include "config.h"
 #include "typewriter-input.h"
 #include "typewriter-ui.h"
@@ -236,8 +236,11 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
       GTK_LABEL(win->timer),
       g_strdup_printf("%02u:%02u.%03u", minutes, seconds, milliseconds));
 
+  char *grade = nullptr;
+  grade = g_malloc(1024);
+
   // 打印成绩
-  g_print(
+  sprintf(grade,
       "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 错字%d 时间%02u:%02u.%03u 回改%d "
       "退格%d 回车%d 键数%d 打词%.2f%% 输入法:Rime·98五笔 NFLinux跟打器\n",
       win->article_name, overall_typing_speed, stroke, avg_code_len,
@@ -247,6 +250,33 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
       win->stats.backspace_count, win->stats.enter_count, win->stats.stroke_count,
       win->stats.type_word_count * 100.0 /
           (win->stats.type_char_count + win->stats.type_word_count));
+
+  GdkDisplay *display;
+
+  display = gtk_widget_get_display(GTK_WIDGET(win));
+  GdkClipboard *clipboard = gdk_display_get_clipboard(display);
+  gdk_clipboard_set_text(clipboard, grade);
+  // 发送成绩到QQ
+  int window_count;
+  if (init_x11() != 0) {
+    g_print("Cannot open display\n");
+    return;
+  }
+  Window *windows = get_all_windows(&window_count);
+
+  Window qq_win = find_window_by_title("QQ");
+  if (qq_win != None) {
+    g_print("\n=== 激活QQ窗口 ===\n");
+    activate_window(qq_win);
+    send_qq_msg();
+  } else {
+    g_print("未找到QQ窗口\n");
+  }
+
+  g_free(grade);
+  free(windows);
+  cleanup();
+
 }
 
 static void load_css_providers(TypewriterWindow *self) {

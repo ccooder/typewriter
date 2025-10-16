@@ -5,25 +5,10 @@
 #include "typewriter-load-article.h"
 #include "typewriter-window.h"
 #include <X11/Xlib.h>
+#include <x11_util.h>
 #include <X11/Xatom.h>
 
-static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
-                                gpointer user_data) {
-  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  GError *error = NULL;
-
-  // 读取文本内容
-  char *text = gdk_clipboard_read_text_finish(clipboard, result, &error);
-
-  if (error != NULL) {
-    g_printerr("Error reading clipboard: %s\n", error->message);
-    g_error_free(error);
-    return;
-  }
-
-  if (text == NULL) {
-    return;
-  }
+static void load_text(TypewriterWindow *win, char *text) {
   // 成功获取到文本，可以在这里进行处理
   gtk_label_set_text(GTK_LABEL(win->info), "来自剪贴板");
   win->article_name = "来自剪贴板";
@@ -68,10 +53,32 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
   gtk_label_set_text(GTK_LABEL(win->words),
                      g_strdup_printf("共%d字", text_length));
 
-  // 不要忘记释放文本资源
-  g_free(text);
+}
+
+static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
+                                gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  GError *error = NULL;
+
+  // 读取文本内容
+  char *text = gdk_clipboard_read_text_finish(clipboard, result, &error);
+
+  if (error != NULL) {
+    g_printerr("Error reading clipboard: %s\n", error->message);
+    g_error_free(error);
+    return;
+  }
+
+  if (text == NULL) {
+    return;
+  }
+
+  load_text(win, text);
 
   typewriter_window_retype(win);
+
+  g_free(text);
+
 }
 
 void load_article_from_file(TypewriterWindow *win) { g_assert(TYPEWRITER_IS_WINDOW(win)); }
@@ -89,41 +96,44 @@ void load_article_from_clipboard(TypewriterWindow *win) {
 
 void load_article_from_qq_group(TypewriterWindow *win) {
   g_assert(TYPEWRITER_IS_WINDOW(win));
-  g_print("加载QQ群文章");
-  Display *display = XOpenDisplay(NULL);
-  if (!display) {
+  g_print("加载QQ群文章\n");
+
+  if (init_x11() != 0) {
     g_print("Cannot open display\n");
+    return;
   }
-  Window root = DefaultRootWindow(display);
 
-  Atom net_client_list = XInternAtom(display, "_NET_CLIENT_LIST_STACKING", False);
-  Atom actual_type;
-  int actual_format;
-  unsigned long nitems;
-  unsigned long bytes_after;
-  unsigned char *prop_return = NULL;
+  int window_count;
+  Window *windows = get_all_windows(&window_count);
 
-  XGetWindowProperty(display, root, net_client_list, 0, (~0L), False,
-                     XA_WINDOW, &actual_type, &actual_format,
-                     &nitems, &bytes_after, &prop_return);
+  Window qq_win = find_window_by_title("QQ");
+  if (qq_win != None) {
+    g_print("\n=== 激活QQ窗口 ===\n");
+    activate_window(qq_win);
 
-  Window *windows = (Window *)prop_return;
-  Window qq_window = None;
-  for (unsigned int i = 0; i < nitems; ++i) {
-    char *window_name;
-    if (XFetchName(display, windows[i], &window_name)) {
-      printf("Window ID: %lu, Name: %s\n", windows[i], window_name);
-      if (g_str_has_prefix(window_name, "Calculator")) {
-        printf("找到QQ窗口: %lu, Name: %s\n", windows[i], window_name);
-        qq_window = windows[i];
-      }
-      XFree(window_name);
+    // 等待窗口激活
+    usleep(100000);
+
+    g_print("=== 尝试获取窗口文本 ===\n");
+
+    char *text = get_window_text(qq_win);
+    if (text) {
+      g_print("获取到的文本:\n%s\n", text);
+      load_text(win, text);
+      g_free(text);
+    } else {
+      g_print("获取文本失败\n");
     }
+
+    // 切回Typewriter
+    Window typewriter_win = find_window_by_title("Typewriter");
+    if (typewriter_win != None) {
+      activate_window(typewriter_win);
+    }
+  } else {
+    g_print("未找到QQ窗口\n");
   }
-  if (qq_window != None) {
-    printf("QQ窗口ID: %lu\n", qq_window);
-    XRaiseWindow(display, qq_window);
-    XSetInputFocus(display, qq_window, RevertToParent, CurrentTime);
-    XFlush(display);
-  }
+
+  free(windows);
+  cleanup();
 }
