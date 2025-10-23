@@ -75,11 +75,14 @@ typedef struct {
 struct _TypewriterWindow {
   GtkApplicationWindow parent_instance;
   GtkCssProvider *colors_provider;
-
   /* Template widgets */
+  // 主区域
+  GtkWidget *main_paned;
   // 对照区
+  GtkWidget *control_scroll;
   GtkWidget *control;
   // 跟打区
+  GtkWidget *follow_box;
   GtkWidget *follow;
   // 顶部状态区
   // 用时
@@ -95,6 +98,9 @@ struct _TypewriterWindow {
 
   // 跟打信息区
   GtkWidget *info;
+
+  // 中间信息区
+  GtkWidget *mid_info;
 
   // 进度条
   GtkWidget *progressbar;

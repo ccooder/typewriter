@@ -19,10 +19,11 @@
  */
 
 #include "typewriter-window.h"
-#include "x11_util.h"
+
 #include "config.h"
 #include "typewriter-input.h"
 #include "typewriter-ui.h"
+#include "x11_util.h"
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
                     GTK_TYPE_APPLICATION_WINDOW)
@@ -32,7 +33,13 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
 
   gtk_widget_class_set_template_from_resource(
       widget_class, "/run/fenglu/typewriter/typewriter-window.ui");
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       main_paned);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       control_scroll);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, control);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       follow_box);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, follow);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, timer);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, speed);
@@ -41,8 +48,9 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
                                        code_len);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, words);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, info);
-  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, progressbar);
-
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, mid_info);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       progressbar);
 
   g_signal_new("TYPE_ENDED", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST, 0,
                NULL, NULL, NULL, G_TYPE_NONE, 0);
@@ -51,6 +59,24 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
 static void typewriter_window_init(TypewriterWindow *self) {
   gtk_widget_init_template(GTK_WIDGET(self));
   load_css_providers(self);
+
+  gtk_widget_set_size_request(GTK_WIDGET(self->main_paned), 800, 400);
+  gtk_paned_set_resize_start_child(GTK_PANED(self->main_paned), TRUE);
+  gtk_paned_set_shrink_start_child(GTK_PANED(self->main_paned), FALSE);
+  gtk_paned_set_resize_end_child(GTK_PANED(self->main_paned), FALSE);
+  gtk_paned_set_shrink_end_child(GTK_PANED(self->main_paned), FALSE);
+
+  gtk_paned_set_start_child(GTK_PANED(self->main_paned), self->control_scroll);
+  gtk_paned_set_end_child(GTK_PANED(self->main_paned), self->follow_box);
+  // 设置最小窗口大小
+  gtk_widget_set_size_request(GTK_WIDGET(self->control_scroll), -1, 100);
+  gtk_widget_set_size_request(GTK_WIDGET(self->follow_box), -1, 100);
+
+  GdkCursor *move_cursor = gdk_cursor_new_from_name("row-resize", NULL);
+
+  // Set the cursor on the button
+  gtk_widget_set_cursor(self->mid_info, move_cursor);
+  g_object_unref(move_cursor);
 
   // 初始化状态变量
   self->state = TYPEWRITER_STATE_READY;
@@ -240,14 +266,16 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
   grade = g_malloc(1024);
 
   // 打印成绩
-  sprintf(grade,
+  sprintf(
+      grade,
       "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 错字%d 时间%02u:%02u.%03u 回改%d "
       "退格%d 回车%d 键数%d 打词%.2f%% 输入法:Rime·98五笔 NFLinux跟打器\n",
       win->article_name, overall_typing_speed, stroke, avg_code_len,
       win->stats.total_char_count,
       win->stats.total_char_count - win->stats.correct_char_count, minutes,
-      seconds, milliseconds,  win->stats.reform_count,
-      win->stats.backspace_count, win->stats.enter_count, win->stats.stroke_count,
+      seconds, milliseconds, win->stats.reform_count,
+      win->stats.backspace_count, win->stats.enter_count,
+      win->stats.stroke_count,
       win->stats.type_word_count * 100.0 /
           (win->stats.type_char_count + win->stats.type_word_count));
 
@@ -276,7 +304,6 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
   g_free(grade);
   free(windows);
   cleanup();
-
 }
 
 static void load_css_providers(TypewriterWindow *self) {
@@ -356,6 +383,6 @@ void typewriter_window_retype(TypewriterWindow *win) {
   gtk_text_view_scroll_to_mark(GTK_TEXT_VIEW(win->control), control_start_mark,
                                0.1, TRUE, 0, 0);
   // gtk_text_view_backward_display_line_start(GTK_TEXT_VIEW(win->control),
-                                            // &start);
+  // &start);
   gtk_text_buffer_delete_mark(control_buffer, control_start_mark);
 }

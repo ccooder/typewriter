@@ -95,8 +95,8 @@
             <child>
               <object class="GtkProgressBar" id="progressbar">
                 <property name="css-classes">progressbar</property>
+                <property name="ellipsize">none</property>
                 <property name="hexpand">True</property>
-                <property name="ellipsize">0</property>
               </object>
             </child>
             <layout>
@@ -122,60 +122,67 @@
           </object>
         </child>
         <child>
-          <object class="GtkScrolledWindow">
+          <object class="GtkPaned" id="main_paned">
+            <property name="orientation">vertical</property>
+            <property name="position">270</property>
+            <property name="resize-start-child">True</property>
+            <property name="shrink-start-child">False</property>
+            <property name="resize-end-child">False</property>
+            <property name="shrink-end-child">False</property>
             <child>
-              <object class="GtkTextView" id="control">
-                <property name="css-classes">control</property>
-                <property name="cursor-visible">False</property>
-                <property name="editable">False</property>
-                <property name="hexpand">True</property>
-                <property name="vexpand">True</property>
-                <property name="wrap-mode">word-char</property>
+              <object class="GtkScrolledWindow" id="control_scroll">
+                <child>
+                  <object class="GtkTextView" id="control">
+                    <property name="css-classes">control</property>
+                    <property name="cursor-visible">False</property>
+                    <property name="editable">False</property>
+                    <property name="hexpand">True</property>
+                    <property name="vexpand">True</property>
+                    <property name="wrap-mode">word-char</property>
+                  </object>
+                </child>
+              </object>
+            </child>
+            <child>
+              <object class="GtkBox" id="follow_box">
+                <property name="orientation">vertical</property>
+                <child>
+                  <object class="GtkBox" id="mid_info">
+                    <property name="hexpand">True</property>
+                    <child>
+                      <object class="GtkLabel"/>
+                    </child>
+                    <child>
+                      <object class="GtkSeparator"/>
+                    </child>
+                    <child>
+                      <object class="GtkLabel"/>
+                    </child>
+                    <child>
+                      <object class="GtkSeparator"/>
+                    </child>
+                    <child>
+                      <object class="GtkLabel"/>
+                    </child>
+                  </object>
+                </child>
+                <child>
+                  <object class="GtkScrolledWindow">
+                    <child>
+                      <object class="GtkTextView" id="follow">
+                        <property name="css-classes">follow</property>
+                        <property name="hexpand">True</property>
+                        <property name="vexpand">True</property>
+                        <property name="wrap-mode">word-char</property>
+                      </object>
+                    </child>
+                  </object>
+                </child>
               </object>
             </child>
             <layout>
               <property name="column">0</property>
               <property name="row">3</property>
-            </layout>
-          </object>
-        </child>
-        <child>
-          <object class="GtkBox">
-            <property name="hexpand">True</property>
-            <child>
-              <object class="GtkLabel"/>
-            </child>
-            <child>
-              <object class="GtkSeparator"/>
-            </child>
-            <child>
-              <object class="GtkLabel"/>
-            </child>
-            <child>
-              <object class="GtkSeparator"/>
-            </child>
-            <child>
-              <object class="GtkLabel"/>
-            </child>
-            <layout>
-              <property name="column">0</property>
-              <property name="row">4</property>
-            </layout>
-          </object>
-        </child>
-        <child>
-          <object class="GtkScrolledWindow">
-            <child>
-              <object class="GtkTextView" id="follow">
-                <property name="css-classes">follow</property>
-                <property name="hexpand">True</property>
-                <property name="vexpand">True</property>
-                <property name="wrap-mode">word-char</property>
-              </object>
-            </child>
-            <layout>
-              <property name="column">0</property>
-              <property name="row">5</property>
             </layout>
           </object>
         </child>
