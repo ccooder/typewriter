@@ -81,20 +81,7 @@ static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,
 
 }
 
-void load_article_from_file(TypewriterWindow *win) { g_assert(TYPEWRITER_IS_WINDOW(win)); }
-
-void load_article_from_clipboard(TypewriterWindow *win) {
-  g_assert(TYPEWRITER_IS_WINDOW(win));
-
-  GdkDisplay *display;
-
-  display = gtk_widget_get_display(GTK_WIDGET(win));
-  GdkClipboard *clipboard = gdk_display_get_clipboard(display);
-  gdk_clipboard_read_text_async(clipboard, NULL,
-                                (GAsyncReadyCallback)load_clipboard_text, win);
-}
-
-void load_article_from_qq_group(TypewriterWindow *win) {
+static void load_article_from_qq_group_linux(TypewriterWindow *win) {
   g_assert(TYPEWRITER_IS_WINDOW(win));
   g_print("加载QQ群文章\n");
 
@@ -136,4 +123,58 @@ void load_article_from_qq_group(TypewriterWindow *win) {
 
   free(windows);
   cleanup();
+}
+
+static int load_article_from_qq_group_macos(TypewriterWindow *win) {
+  FILE *fp;
+  char buffer[1024];
+  char command[2048];
+
+  // Your AppleScript to be executed, returning a string
+
+  // Construct the osascript command to execute the AppleScript and redirect its output
+  snprintf(command, sizeof(command), "osascript list_qq_win.scpt");
+
+  // Execute the command and capture its output
+  fp = popen(command, "r");
+  if (fp == NULL) {
+    perror("Failed to run command");
+    return 1;
+  }
+
+  // Read the output line by line
+  while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+    // Process the return value (e.g., print it)
+    printf("AppleScript returned: %s", buffer);
+  }
+
+  // Close the pipe
+  pclose(fp);
+
+  return 0;
+}
+
+void load_article_from_file(TypewriterWindow *win) { g_assert(TYPEWRITER_IS_WINDOW(win)); }
+
+void load_article_from_clipboard(TypewriterWindow *win) {
+  g_assert(TYPEWRITER_IS_WINDOW(win));
+
+  GdkDisplay *display;
+
+  display = gtk_widget_get_display(GTK_WIDGET(win));
+  GdkClipboard *clipboard = gdk_display_get_clipboard(display);
+  gdk_clipboard_read_text_async(clipboard, NULL,
+                                (GAsyncReadyCallback)load_clipboard_text, win);
+}
+
+void load_article_from_qq_group(TypewriterWindow *win) {
+
+#if defined(__APPLE__)
+  load_article_from_qq_group_macos(win);
+#elif defined(__linux__)
+  load_article_from_qq_group_linux(win);
+#else
+  printf("Hello from another platform!\n");
+#endif
+
 }
