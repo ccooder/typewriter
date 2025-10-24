@@ -21,6 +21,7 @@
 #include "typewriter-window.h"
 
 #include "config.h"
+#include "qq_group_item.h"
 #include "typewriter-input.h"
 #include "typewriter-ui.h"
 #include "x11_util.h"
@@ -33,6 +34,12 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
 
   gtk_widget_class_set_template_from_resource(
       widget_class, "/run/fenglu/typewriter/typewriter-window.ui");
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       qq_group_dropdown);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       qq_group_popover);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       qq_group_list);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
                                        main_paned);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
@@ -48,7 +55,8 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
                                        code_len);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, words);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, info);
-  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow, mid_info);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       mid_info);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
                                        progressbar);
 
@@ -72,11 +80,24 @@ static void typewriter_window_init(TypewriterWindow *self) {
   gtk_widget_set_size_request(GTK_WIDGET(self->control_scroll), -1, 100);
   gtk_widget_set_size_request(GTK_WIDGET(self->follow_box), -1, 100);
 
-  GdkCursor *move_cursor = gdk_cursor_new_from_name("row-resize", NULL);
+  // GdkCursor *move_cursor = gdk_cursor_new_from_name("row-resize", NULL);
+  //
+  // // Set the cursor on the button
+  // gtk_widget_set_cursor(self->mid_info, move_cursor);
+  // g_object_unref(move_cursor);
 
-  // Set the cursor on the button
-  gtk_widget_set_cursor(self->mid_info, move_cursor);
-  g_object_unref(move_cursor);
+  // Create the factory and connect the setup/bind signals
+  GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
+  g_signal_connect(factory, "setup", G_CALLBACK(setup_cb), NULL);
+  g_signal_connect(factory, "bind", G_CALLBACK(bind_cb), NULL);
+
+  GtkListStore *list_store = gtk_list_store_new(1, QQ_GROUP_TYPE_ITEM);
+  // Add some items to the list store
+  QQGroupItem *item = qq_group_item_new(0, "Default Group");
+  // gtk_list_store_append(list_store, )
+
+  // Create the ListView and set its model and factory
+  gtk_list_view_set_factory(GTK_LIST_VIEW(self->qq_group_list), factory);
 
   // 初始化状态变量
   self->state = TYPEWRITER_STATE_READY;
@@ -121,6 +142,13 @@ static void typewriter_window_init(TypewriterWindow *self) {
   g_signal_connect(focus_controller, "leave", G_CALLBACK(on_window_focus_leave),
                    self);
   g_signal_connect(self, "TYPE_ENDED", G_CALLBACK(on_type_ended), NULL);
+  g_signal_connect(self->qq_group_dropdown, "clicked",
+                   G_CALLBACK(on_qq_group_dropdown_clicked), self);
+  g_signal_connect(self->qq_group_popover, "closed",
+                   G_CALLBACK(on_qq_group_popover_closed), self);
+
+  // g_signal_connect_after(self->qq_group_dropdown, "notify::selected",
+  // G_CALLBACK(on_qq_group_activate), NULL);
 }
 
 TypewriterWindow *typewriter_window_new(TypewriterApplication *app) {
@@ -290,9 +318,9 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
     g_print("Cannot open display\n");
     return;
   }
-  Window *windows = get_all_windows(&window_count);
+  Window *windows = get_all_windows(&window_count, "qq");
 
-  Window qq_win = find_window_by_title("QQ");
+  Window qq_win = find_window_by_title("QQ", "qq");
   if (qq_win != None) {
     g_print("\n=== 激活QQ窗口 ===\n");
     activate_window(qq_win);
@@ -304,6 +332,40 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
   g_free(grade);
   free(windows);
   cleanup();
+}
+
+static void on_qq_group_dropdown_clicked(GtkButton *button,
+                                         gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  // 设置Popover的位置相对于按钮
+  gtk_popover_set_pointing_to(GTK_POPOVER(win->qq_group_popover),
+                              NULL);  // 使用默认位置
+  // 设置Popover的父控件
+  gtk_widget_set_parent(win->qq_group_popover, GTK_WIDGET(button));
+
+  // 显示Popover
+  gtk_popover_popup(GTK_POPOVER(win->qq_group_popover));
+}
+
+static void on_qq_group_popover_closed(GtkPopover *popover,
+                                       gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  gtk_widget_unparent(win->qq_group_popover);
+}
+
+static void bind_cb(GtkListItemFactory *factory, GtkListItem *list_item) {
+  QQGroupItem *item = QQ_GROUP_ITEM(gtk_list_item_get_item(list_item));
+  GtkWidget *label = gtk_list_item_get_child(list_item);
+  char *text;
+
+  text = g_strdup_printf("Win: %lu, Name: %s", item->win, item->name);
+  gtk_label_set_text(GTK_LABEL(label), text);
+  g_free(text);
+}
+
+static void setup_cb(GtkListItemFactory *factory, GtkListItem *list_item) {
+  GtkWidget *label = gtk_label_new(nullptr);
+  gtk_list_item_set_child(list_item, label);
 }
 
 static void load_css_providers(TypewriterWindow *self) {

@@ -18,6 +18,25 @@
             <property name="tooltip-text" translatable="yes">Main Menu</property>
           </object>
         </child>
+        <child type="start">
+          <object class="GtkButton" id="qq_group_dropdown">
+            <child>
+            <object class="GtkBox">
+            <property name="orientation">horizontal</property>
+              <child>
+                <object class="GtkLabel">
+                  <property name="label" translatable="yes">潜水</property>
+                </object>
+              </child>
+              <child>
+              <object class="GtkImage">
+                <property name="icon-name">pan-down-symbolic</property>
+              </object>
+              </child>
+            </object>
+            </child>
+          </object>
+        </child>
       </object>
     </property>
     <child>
@@ -125,10 +144,10 @@
           <object class="GtkPaned" id="main_paned">
             <property name="orientation">vertical</property>
             <property name="position">270</property>
-            <property name="resize-start-child">True</property>
-            <property name="shrink-start-child">False</property>
             <property name="resize-end-child">False</property>
+            <property name="resize-start-child">True</property>
             <property name="shrink-end-child">False</property>
+            <property name="shrink-start-child">False</property>
             <child>
               <object class="GtkScrolledWindow" id="control_scroll">
                 <child>
@@ -150,19 +169,12 @@
                   <object class="GtkBox" id="mid_info">
                     <property name="hexpand">True</property>
                     <child>
-                      <object class="GtkLabel"/>
-                    </child>
-                    <child>
-                      <object class="GtkSeparator"/>
-                    </child>
-                    <child>
-                      <object class="GtkLabel"/>
-                    </child>
-                    <child>
-                      <object class="GtkSeparator"/>
-                    </child>
-                    <child>
-                      <object class="GtkLabel"/>
+                      <object class="GtkLabel" id="dropdown_label">
+                        <property name="halign">start</property>
+                        <property name="label" translatable="yes">信息栏</property>
+                        <property name="valign">center</property>
+                        <property name="xalign">0</property>
+                      </object>
                     </child>
                   </object>
                 </child>
@@ -217,4 +229,20 @@
       </item>
     </section>
   </menu>
+  <object class="GtkPopover" id="qq_group_popover">
+    <property name="autohide">True</property>
+    <property name="has-arrow">True</property>
+    <child>
+      <object class="GtkScrolledWindow">
+        <property name="height-request">200</property>
+        <property name="width-request">200</property>
+        <property name="hscrollbar-policy">never</property>
+        <child>
+          <object class="GtkListView" id="qq_group_list">
+            <property name="single-click-activate">True</property>
+          </object>
+        </child>
+      </object>
+    </child>
+  </object>
 </interface>

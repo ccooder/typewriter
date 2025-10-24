@@ -3,10 +3,13 @@
 //
 
 #include "typewriter-load-article.h"
-#include "typewriter-window.h"
+
+#include <X11/Xatom.h>
 #include <X11/Xlib.h>
 #include <x11_util.h>
-#include <X11/Xatom.h>
+
+#include "qq_group_item.h"
+#include "typewriter-window.h"
 
 static void load_text(TypewriterWindow *win, char *text) {
   // 成功获取到文本，可以在这里进行处理
@@ -91,9 +94,17 @@ static void load_article_from_qq_group_linux(TypewriterWindow *win) {
   }
 
   int window_count;
-  Window *windows = get_all_windows(&window_count);
+  Window *windows = get_all_windows(&window_count, "qq");
 
-  Window qq_win = find_window_by_title("QQ");
+  for (int i = 0; i < window_count; i++) {
+    print_window_info(windows[i]);
+
+    QQGroupItem *item = qq_group_item_new(windows[i], "Test");
+    g_print("%s\n",item->name);
+  }
+
+
+  Window qq_win = find_window_by_title("QQ", "qq");
   if (qq_win != None) {
     g_print("\n=== 激活QQ窗口 ===\n");
     activate_window(qq_win);
@@ -113,7 +124,7 @@ static void load_article_from_qq_group_linux(TypewriterWindow *win) {
     }
 
     // 切回Typewriter
-    Window typewriter_win = find_window_by_title("Typewriter");
+    Window typewriter_win = find_window_by_title("Typewriter", "typewriter");
     if (typewriter_win != None) {
       activate_window(typewriter_win);
     }

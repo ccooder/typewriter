@@ -42,6 +42,10 @@ static void on_window_focus_enter(GtkEventControllerFocus *self,
 static void on_window_focus_leave(GtkEventControllerFocus *self,
                                   gpointer user_data);
 static void on_type_ended(TypewriterWindow *win, gpointer user_data);
+static void on_qq_group_dropdown_clicked(GtkButton *button, gpointer user_data);
+static void on_qq_group_popover_closed(GtkPopover *popover, gpointer user_data);
+static void bind_cb(GtkListItemFactory *factory, GtkListItem *list_item);
+static void setup_cb(GtkListItemFactory *factory, GtkListItem *list_item);
 static void load_css_providers(TypewriterWindow *self);
 void typewriter_pause(TypewriterWindow *self);
 void typewriter_window_retype(TypewriterWindow *win);
@@ -76,6 +80,11 @@ struct _TypewriterWindow {
   GtkApplicationWindow parent_instance;
   GtkCssProvider *colors_provider;
   /* Template widgets */
+  // QQ 群选择器
+  GtkWidget *qq_group_dropdown;
+  // QQ 群选择器 Popover
+  GtkWidget *qq_group_popover;
+  GtkWidget *qq_group_list;
   // 主区域
   GtkWidget *main_paned;
   // 对照区

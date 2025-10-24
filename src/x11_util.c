@@ -29,35 +29,76 @@ void cleanup() {
   }
 }
 
+static gboolean is_window_minimized(Window win) {
+  Atom wm_state = XInternAtom(x11display, "_NET_WM_STATE", False);
+  Atom wm_hidden = XInternAtom(x11display, "_NET_WM_STATE_HIDDEN", False);
+  Atom actual_type;
+  int actual_format;
+  unsigned long num_items, bytes_after;
+  Atom *states = NULL;
+
+  if (XGetWindowProperty(x11display, win, wm_state, 0, sizeof(Atom), False,
+                         XA_ATOM, &actual_type, &actual_format, &num_items,
+                         &bytes_after, (unsigned char **)&states) == Success) {
+    for (unsigned int j = 0; j < num_items; j++) {
+      if (states[j] == wm_hidden) {
+        for (unsigned long i = 0; i < num_items; ++i) {
+          if (states[i] == wm_hidden) {
+            XFree(states);
+            return TRUE;
+          }
+        }
+      }
+    }
+    XFree(states);
+  }
+
+  return FALSE;
+}
+
 // 获取所有窗口的递归函数
-void get_windows_recursive(Window w, Window **windows, int *count) {
+void get_windows_recursive(Window w, Window **windows, int *count,
+                           const char *class_name) {
   Window parent;
   Window *children = NULL;
   unsigned int nchildren;
 
   if (XQueryTree(x11display, w, &w, &parent, &children, &nchildren)) {
     for (unsigned int i = 0; i < nchildren; i++) {
+      // 获取窗口类
+      char *win_class_name = NULL;
+      XClassHint class_hint;
+      if (XGetClassHint(x11display, children[i], &class_hint)) {
+        win_class_name = class_hint.res_name;
+      }
+      if (win_class_name && strcmp(win_class_name, class_name) != 0) {
+        continue;
+      }
       // 检查窗口是否映射（可见）
       XWindowAttributes attrs;
       if (XGetWindowAttributes(x11display, children[i], &attrs)) {
-        // 重新分配内存并添加窗口
-        *windows = realloc(*windows, (*count + 1) * sizeof(Window));
-        (*windows)[*count] = children[i];
-        (*count)++;
+        if (attrs.map_state == IsViewable || is_window_minimized(children[i])) {
+          if (win_class_name) {
+            // 重新分配内存并添加窗口
+            *windows = realloc(*windows, (*count + 1) * sizeof(Window));
+            (*windows)[*count] = children[i];
+            (*count)++;
+          }
+        }
       }
       // 递归获取子窗口
-      get_windows_recursive(children[i], windows, count);
+      get_windows_recursive(children[i], windows, count, class_name);
     }
     if (children) XFree(children);
   }
 }
 
 // 获取所有打开的窗口
-Window *get_all_windows(int *window_count) {
+Window *get_all_windows(int *window_count, const char *class_name) {
   Window *windows = NULL;
   *window_count = 0;
 
-  get_windows_recursive(root_window, &windows, window_count);
+  get_windows_recursive(root_window, &windows, window_count, class_name);
   return windows;
 }
 
@@ -106,9 +147,9 @@ int activate_window(Window win) {
 }
 
 // 根据窗口标题查找窗口
-Window find_window_by_title(const char *title_pattern) {
+Window find_window_by_title(const char *title_pattern, char *class_name) {
   int window_count;
-  Window *windows = get_all_windows(&window_count);
+  Window *windows = get_all_windows(&window_count, class_name);
   Window found_window = None;
 
   for (int i = 0; i < window_count; i++) {
@@ -263,7 +304,6 @@ char *get_window_text(Window win) {
   return selection_text;
 }
 
-
 // 给QQ窗口粘贴文本
 void send_qq_msg() {
   // 模拟按下Ctrl+V粘贴到QQ窗口
@@ -281,7 +321,8 @@ void send_qq_msg() {
   XTestFakeKeyEvent(x11display, keycode_control, False, CurrentTime);
 
   g_print("粘贴完成\n");
-  // TODO NFL X11 粘贴必须等所有的等待时间完成才会真正粘贴成功，暂未找到原因，先自动粘贴手动发送消息
+  // TODO NFL X11
+  // 粘贴必须等所有的等待时间完成才会真正粘贴成功，暂未找到原因，先自动粘贴手动发送消息
   // g_print("发送回车\n");
   // // 按下Control
   // XTestFakeKeyEvent(x11display, keycode_control, True, CurrentTime);
