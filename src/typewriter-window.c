@@ -21,10 +21,10 @@
 #include "typewriter-window.h"
 
 #include "config.h"
-#include "qq_group_item.h"
+#include "qq-group-item.h"
 #include "typewriter-input.h"
 #include "typewriter-ui.h"
-#include "x11_util.h"
+#include "x11-util.h"
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
                     GTK_TYPE_APPLICATION_WINDOW)
@@ -86,18 +86,6 @@ static void typewriter_window_init(TypewriterWindow *self) {
   // gtk_widget_set_cursor(self->mid_info, move_cursor);
   // g_object_unref(move_cursor);
 
-  // Create the factory and connect the setup/bind signals
-  GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
-  g_signal_connect(factory, "setup", G_CALLBACK(setup_cb), NULL);
-  g_signal_connect(factory, "bind", G_CALLBACK(bind_cb), NULL);
-
-  GtkListStore *list_store = gtk_list_store_new(1, QQ_GROUP_TYPE_ITEM);
-  // Add some items to the list store
-  QQGroupItem *item = qq_group_item_new(0, "Default Group");
-  // gtk_list_store_append(list_store, )
-
-  // Create the ListView and set its model and factory
-  gtk_list_view_set_factory(GTK_LIST_VIEW(self->qq_group_list), factory);
 
   // 初始化状态变量
   self->state = TYPEWRITER_STATE_READY;
@@ -117,6 +105,28 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->update_timer_id = 0;
   self->max_queue_size = 16;  // 存储最近16次击键时间
   self->key_time_queue = g_queue_new();
+  self->qq_group_list_store = g_list_store_new(QQ_GROUP_TYPE_ITEM);
+
+
+  // Create the factory and connect the setup/bind signals
+  GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
+  g_signal_connect(factory, "setup", G_CALLBACK(setup_cb), NULL);
+  g_signal_connect(factory, "bind", G_CALLBACK(bind_cb), NULL);
+  // Add some items to the list store
+  QQGroupItem *item = qq_group_item_new(0, "潜水", TRUE);
+  self->selected_group = item;
+  g_list_store_append(self->qq_group_list_store, item);
+  QQGroupItem *item2 = qq_group_item_new(1, "假设我是QQ群1", FALSE);
+  g_list_store_append(self->qq_group_list_store, item2);
+  QQGroupItem *item3 = qq_group_item_new(1, "假设我是QQ群2", FALSE);
+  g_list_store_append(self->qq_group_list_store, item3);
+  GtkSingleSelection *selection_model =
+      gtk_single_selection_new(G_LIST_MODEL(self->qq_group_list_store));
+  gtk_list_view_set_model(GTK_LIST_VIEW(self->qq_group_list),
+                          GTK_SELECTION_MODEL(selection_model));
+
+  // Create the ListView and set its model and factory
+  gtk_list_view_set_factory(GTK_LIST_VIEW(self->qq_group_list), factory);
 
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(self->follow));
   GtkTextIter end_iter;
@@ -146,7 +156,8 @@ static void typewriter_window_init(TypewriterWindow *self) {
                    G_CALLBACK(on_qq_group_dropdown_clicked), self);
   g_signal_connect(self->qq_group_popover, "closed",
                    G_CALLBACK(on_qq_group_popover_closed), self);
-
+  g_signal_connect(self->qq_group_list, "activate",
+                   G_CALLBACK(on_qq_group_selected), self);
   // g_signal_connect_after(self->qq_group_dropdown, "notify::selected",
   // G_CALLBACK(on_qq_group_activate), NULL);
 }
@@ -354,18 +365,60 @@ static void on_qq_group_popover_closed(GtkPopover *popover,
 }
 
 static void bind_cb(GtkListItemFactory *factory, GtkListItem *list_item) {
-  QQGroupItem *item = QQ_GROUP_ITEM(gtk_list_item_get_item(list_item));
-  GtkWidget *label = gtk_list_item_get_child(list_item);
-  char *text;
+  GtkWidget *box = gtk_list_item_get_child(list_item);
+  GtkWidget *label = gtk_widget_get_first_child(box);
+  GtkWidget *check = gtk_widget_get_next_sibling(label);
 
-  text = g_strdup_printf("Win: %lu, Name: %s", item->win, item->name);
-  gtk_label_set_text(GTK_LABEL(label), text);
-  g_free(text);
+  QQGroupItem *data = QQ_GROUP_ITEM(gtk_list_item_get_item(list_item));
+
+  if (data && GTK_IS_LABEL(label)) {
+    gtk_label_set_text(GTK_LABEL(label), data->name);
+    gtk_widget_set_visible(check, data->is_selected);
+  }
 }
 
 static void setup_cb(GtkListItemFactory *factory, GtkListItem *list_item) {
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
   GtkWidget *label = gtk_label_new(nullptr);
-  gtk_list_item_set_child(list_item, label);
+  GtkWidget *check = gtk_image_new_from_icon_name("object-select-symbolic");
+
+  gtk_widget_set_halign(label, GTK_ALIGN_START);
+  gtk_widget_set_hexpand(label, TRUE);
+  gtk_widget_set_visible(check, FALSE);
+
+  gtk_box_append(GTK_BOX(box), label);
+  gtk_box_append(GTK_BOX(box), check);
+  gtk_list_item_set_child(list_item, box);
+}
+
+static void on_qq_group_selected(GtkListView *list_view, guint position,
+                                 gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  // 先取消之前选中的项
+  if (win->selected_group) {
+    win->selected_group->is_selected = FALSE;
+  }
+
+  QQGroupItem *item = QQ_GROUP_ITEM(
+      g_list_model_get_item(G_LIST_MODEL(win->qq_group_list_store), position));
+  if (item) {
+    item->is_selected = TRUE;
+    win->selected_group = item;
+
+    // 更新按钮文本
+    GtkWidget *button_content = gtk_button_get_child(GTK_BUTTON(win->qq_group_dropdown));
+    if (GTK_IS_BOX(button_content)) {
+      GtkWidget *label = gtk_widget_get_first_child(button_content);
+      if (GTK_IS_LABEL(label)) {
+        gtk_label_set_text(GTK_LABEL(label), item->name);
+      }
+    }
+
+    // 关闭popover
+    gtk_popover_popdown(GTK_POPOVER(win->qq_group_popover));
+
+    g_object_unref(item);
+  }
 }
 
 static void load_css_providers(TypewriterWindow *self) {

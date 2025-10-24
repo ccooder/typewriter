@@ -23,6 +23,7 @@
 #include <gdk/gdk.h>
 #include <gtk/gtk.h>
 
+#include "qq-group-item.h"
 #include "typewriter-application.h"
 
 G_BEGIN_DECLS
@@ -46,6 +47,8 @@ static void on_qq_group_dropdown_clicked(GtkButton *button, gpointer user_data);
 static void on_qq_group_popover_closed(GtkPopover *popover, gpointer user_data);
 static void bind_cb(GtkListItemFactory *factory, GtkListItem *list_item);
 static void setup_cb(GtkListItemFactory *factory, GtkListItem *list_item);
+static void on_qq_group_selected(GtkListView *list_view, guint position,
+                                 gpointer user_data);
 static void load_css_providers(TypewriterWindow *self);
 void typewriter_pause(TypewriterWindow *self);
 void typewriter_window_retype(TypewriterWindow *win);
@@ -126,6 +129,9 @@ struct _TypewriterWindow {
   TypewriterState state;
   // 跟打统计数据
   TypewriterStats stats;
+  // QQ群选择器
+  GListStore *qq_group_list_store;
+  QQGroupItem *selected_group;
 };
 
 G_END_DECLS

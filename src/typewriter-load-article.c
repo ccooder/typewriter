@@ -6,9 +6,9 @@
 
 #include <X11/Xatom.h>
 #include <X11/Xlib.h>
-#include <x11_util.h>
+#include <x11-util.h>
 
-#include "qq_group_item.h"
+#include "qq-group-item.h"
 #include "typewriter-window.h"
 
 static void load_text(TypewriterWindow *win, char *text) {
@@ -99,7 +99,7 @@ static void load_article_from_qq_group_linux(TypewriterWindow *win) {
   for (int i = 0; i < window_count; i++) {
     print_window_info(windows[i]);
 
-    QQGroupItem *item = qq_group_item_new(windows[i], "Test");
+    QQGroupItem *item = qq_group_item_new(windows[i], "Test", FALSE);
     g_print("%s\n",item->name);
   }
 
