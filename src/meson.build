@@ -7,6 +7,7 @@ typewriter_sources = [
     'typewriter-load-article.c',
     'x11-util.c',
     'qq-group-item.c',
+    'qq-group-util.c',
 ]
 
 typewriter_deps = [

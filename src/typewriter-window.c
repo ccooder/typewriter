@@ -25,6 +25,7 @@
 #include "typewriter-input.h"
 #include "typewriter-ui.h"
 #include "x11-util.h"
+#include "qq-group-util.h"
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
                     GTK_TYPE_APPLICATION_WINDOW)
@@ -116,10 +117,6 @@ static void typewriter_window_init(TypewriterWindow *self) {
   QQGroupItem *item = qq_group_item_new(0, "潜水", TRUE);
   self->selected_group = item;
   g_list_store_append(self->qq_group_list_store, item);
-  QQGroupItem *item2 = qq_group_item_new(1, "假设我是QQ群1", FALSE);
-  g_list_store_append(self->qq_group_list_store, item2);
-  QQGroupItem *item3 = qq_group_item_new(1, "假设我是QQ群2", FALSE);
-  g_list_store_append(self->qq_group_list_store, item3);
   GtkSingleSelection *selection_model =
       gtk_single_selection_new(G_LIST_MODEL(self->qq_group_list_store));
   gtk_list_view_set_model(GTK_LIST_VIEW(self->qq_group_list),
@@ -353,6 +350,9 @@ static void on_qq_group_dropdown_clicked(GtkButton *button,
                               NULL);  // 使用默认位置
   // 设置Popover的父控件
   gtk_widget_set_parent(win->qq_group_popover, GTK_WIDGET(button));
+
+  // 获取QQ群窗口列表
+  list_qq_group_window(win);
 
   // 显示Popover
   gtk_popover_popup(GTK_POPOVER(win->qq_group_popover));
