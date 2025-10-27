@@ -39,6 +39,10 @@ static QQGroupItem **list_qq_group_window_macos(TypewriterWindow *win,
     g_print("不存在QQ群窗口\n");
     return items;
   }
+  if (g_strcmp0(trimmed_buffer, "error") == 0) {
+    g_print("获取QQ群窗口失败,请检查是否运行了QQ程序呢？\n");
+    return items;
+  }
   char **lines = g_strsplit(buffer, ", ", -1);
   for (int i = 0; lines[i] != NULL; i++) {
     g_print("%s\n", lines[i]);
@@ -116,6 +120,23 @@ static void send_to_qq_group_linux(TypewriterWindow *win) {
   cleanup();
 }
 
+static void send_to_qq_group_macos(TypewriterWindow *win) {
+  // 发送成绩到QQ
+  if (init_x11() != 0) {
+    g_print("Cannot open display\n");
+    return;
+  }
+  Window qq_win = win->selected_group->win;
+  if (qq_win != None) {
+    g_print("\n=== 激活QQ窗口 ===\n");
+    activate_window(qq_win);
+    send_qq_msg();
+  } else {
+    g_print("未找到QQ窗口\n");
+  }
+  cleanup();
+}
+
 void list_qq_group_window(TypewriterWindow *win) {
   guint win_count = 0;
   gboolean has_selected = FALSE;
@@ -169,7 +190,7 @@ void send_to_qq_group(TypewriterWindow *win, char *grade) {
     return;
   }
 #if defined(__APPLE__)
-  send_to_qq_group_linux(win);
+  send_to_qq_group_macos(win);
 #elif defined(__linux__)
   send_to_qq_group_linux(win);
 #else
