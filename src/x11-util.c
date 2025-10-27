@@ -102,26 +102,31 @@ Window *get_all_windows(int *window_count, const char *class_name) {
   return windows;
 }
 
-// 打印窗口信息
-void print_window_info(Window win) {
+void get_window_title(Window win, char **title) {
   XTextProperty text_prop;
-  char *window_name = NULL;
-
-  // 获取窗口标题
   if (XGetWMName(x11display, win, &text_prop) && text_prop.value) {
     if (text_prop.encoding == XA_STRING) {
-      window_name = (char *)text_prop.value;
+      *title = strdup((char *)text_prop.value);
     } else {
       char **list = NULL;
       int count = 0;
       if (XmbTextPropertyToTextList(x11display, &text_prop, &list, &count) ==
               Success &&
           count > 0) {
-        window_name = strdup(list[0]);
+        *title = strdup(list[0]);
         XFreeStringList(list);
       }
     }
   }
+}
+
+// 打印窗口信息
+void print_window_info(Window win) {
+  XTextProperty text_prop;
+  char *window_name = NULL;
+
+  // 获取窗口标题
+  get_window_title(win, &window_name);
 
   // 获取窗口类
   char *class_name = NULL;

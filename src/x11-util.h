@@ -23,6 +23,8 @@ int init_x11();
 void cleanup();
 // 获取所有打开的窗口
 Window *get_all_windows(int *window_count, const char *class_name);
+// 获取窗口标题
+void get_window_title(Window win, char **title);
 // 打印窗口信息
 void print_window_info(Window win);
 // 激活窗口（使其获得焦点）

@@ -93,18 +93,12 @@ static void load_article_from_qq_group_linux(TypewriterWindow *win) {
     return;
   }
 
-  int window_count;
-  Window *windows = get_all_windows(&window_count, "qq");
-
-  for (int i = 0; i < window_count; i++) {
-    print_window_info(windows[i]);
-
-    QQGroupItem *item = qq_group_item_new(windows[i], "Test", FALSE);
-    g_print("%s\n",item->name);
+  Window qq_win = win->selected_group->win;
+  if (qq_win == 0) {
+    g_print("当前处理潜水状态\n");
+    return;
   }
 
-
-  Window qq_win = find_window_by_title("QQ", "qq");
   if (qq_win != None) {
     g_print("\n=== 激活QQ窗口 ===\n");
     activate_window(qq_win);
@@ -132,7 +126,6 @@ static void load_article_from_qq_group_linux(TypewriterWindow *win) {
     g_print("未找到QQ窗口\n");
   }
 
-  free(windows);
   cleanup();
 }
 

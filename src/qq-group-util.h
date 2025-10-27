@@ -9,5 +9,5 @@
 #include "x11-util.h"
 
 void list_qq_group_window(TypewriterWindow *win);
-
+void send_to_qq_group(TypewriterWindow *win, char *grade);
 #endif  // NFL_TYPEWRITER_QQ_GROUP_UTIL_H
