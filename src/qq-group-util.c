@@ -149,11 +149,14 @@ void list_qq_group_window(TypewriterWindow *win) {
 #else
   printf("Hello from another platform!\n");
 #endif
-  if (items == nullptr) {
-    return;
-  }
   guint n_items =
       g_list_model_get_n_items(G_LIST_MODEL(win->qq_group_list_store));
+  if (items == nullptr) {
+    g_list_store_splice(win->qq_group_list_store, 1, n_items - 1,
+                       nullptr, win_count);
+    return;
+  }
+
   QQGroupItem *dive_item =
       g_list_model_get_item(G_LIST_MODEL(win->qq_group_list_store), 0);
   if (has_selected) {
