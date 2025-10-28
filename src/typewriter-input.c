@@ -136,7 +136,7 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
 
   GtkTextTag *correct_tag = gtk_text_buffer_create_tag(
-      control_buffer, NULL, "background", "green", NULL);
+      control_buffer, NULL, "background", "#108144", NULL);
   GtkTextTag *incorrect_tag = gtk_text_buffer_create_tag(
       control_buffer, NULL, "background", "red", "foreground", "white", NULL);
 

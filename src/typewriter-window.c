@@ -22,10 +22,10 @@
 
 #include "config.h"
 #include "qq-group-item.h"
+#include "qq-group-util.h"
 #include "typewriter-input.h"
 #include "typewriter-ui.h"
 #include "x11-util.h"
-#include "qq-group-util.h"
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
                     GTK_TYPE_APPLICATION_WINDOW)
@@ -87,7 +87,6 @@ static void typewriter_window_init(TypewriterWindow *self) {
   // gtk_widget_set_cursor(self->mid_info, move_cursor);
   // g_object_unref(move_cursor);
 
-
   // 初始化状态变量
   self->state = TYPEWRITER_STATE_READY;
   self->stats.start_time = 0;
@@ -107,7 +106,6 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->max_queue_size = 16;  // 存储最近16次击键时间
   self->key_time_queue = g_queue_new();
   self->qq_group_list_store = g_list_store_new(QQ_GROUP_TYPE_ITEM);
-
 
   // Create the factory and connect the setup/bind signals
   GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
@@ -316,86 +314,6 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
           (win->stats.type_char_count + win->stats.type_word_count));
 
   send_to_qq_group(win, grade);
-
-}
-
-static void on_qq_group_dropdown_clicked(GtkButton *button,
-                                         gpointer user_data) {
-  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  // 设置Popover的位置相对于按钮
-  gtk_popover_set_pointing_to(GTK_POPOVER(win->qq_group_popover),
-                              NULL);  // 使用默认位置
-  // 设置Popover的父控件
-  gtk_widget_set_parent(win->qq_group_popover, GTK_WIDGET(button));
-
-  // 获取QQ群窗口列表
-  list_qq_group_window(win);
-
-  // 显示Popover
-  gtk_popover_popup(GTK_POPOVER(win->qq_group_popover));
-}
-
-static void on_qq_group_popover_closed(GtkPopover *popover,
-                                       gpointer user_data) {
-  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  gtk_widget_unparent(win->qq_group_popover);
-}
-
-static void bind_cb(GtkListItemFactory *factory, GtkListItem *list_item) {
-  GtkWidget *box = gtk_list_item_get_child(list_item);
-  GtkWidget *label = gtk_widget_get_first_child(box);
-  GtkWidget *check = gtk_widget_get_next_sibling(label);
-
-  QQGroupItem *data = QQ_GROUP_ITEM(gtk_list_item_get_item(list_item));
-
-  if (data && GTK_IS_LABEL(label)) {
-    gtk_label_set_text(GTK_LABEL(label), data->name);
-    gtk_widget_set_visible(check, data->is_selected);
-  }
-}
-
-static void setup_cb(GtkListItemFactory *factory, GtkListItem *list_item) {
-  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 6);
-  GtkWidget *label = gtk_label_new(nullptr);
-  GtkWidget *check = gtk_image_new_from_icon_name("object-select-symbolic");
-
-  gtk_widget_set_halign(label, GTK_ALIGN_START);
-  gtk_widget_set_hexpand(label, TRUE);
-  gtk_widget_set_visible(check, FALSE);
-
-  gtk_box_append(GTK_BOX(box), label);
-  gtk_box_append(GTK_BOX(box), check);
-  gtk_list_item_set_child(list_item, box);
-}
-
-static void on_qq_group_selected(GtkListView *list_view, guint position,
-                                 gpointer user_data) {
-  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  // 先取消之前选中的项
-  if (win->selected_group) {
-    win->selected_group->is_selected = FALSE;
-  }
-
-  QQGroupItem *item = QQ_GROUP_ITEM(
-      g_list_model_get_item(G_LIST_MODEL(win->qq_group_list_store), position));
-  if (item) {
-    item->is_selected = TRUE;
-    win->selected_group = item;
-
-    // 更新按钮文本
-    GtkWidget *button_content = gtk_button_get_child(GTK_BUTTON(win->qq_group_dropdown));
-    if (GTK_IS_BOX(button_content)) {
-      GtkWidget *label = gtk_widget_get_first_child(button_content);
-      if (GTK_IS_LABEL(label)) {
-        gtk_label_set_text(GTK_LABEL(label), item->name);
-      }
-    }
-
-    // 关闭popover
-    gtk_popover_popdown(GTK_POPOVER(win->qq_group_popover));
-
-    g_object_unref(item);
-  }
 }
 
 static void load_css_providers(TypewriterWindow *self) {

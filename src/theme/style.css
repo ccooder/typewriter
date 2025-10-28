@@ -4,6 +4,14 @@
     font-size: 15px;
 }
 
+.qq_group_label {
+    font-size: 15px;
+}
+
+.qq_group_list > row {
+    font-size: 15px;
+}
+
 .info_box {
     background-color: teal;
     color: #eeeeee;
@@ -16,7 +24,7 @@
     border-radius: 0;
     padding: 0;
     margin: 0;
-    min-height:3px;
+    min-height: 3px;
 }
 
 .progressbar > trough {
@@ -32,14 +40,14 @@
     border-radius: 0;
     padding: 0;
     margin: 0;
-    min-height:3px;
+    min-height: 3px;
     background: linear-gradient(180deg, #008080, #02fafd);
     transition: width 0.5s ease-in-out;
 }
 
 .control {
     border: 0;
-    font-size: 25px;
+    font-size: 26px;
     line-height: 1.2;
     background-color: #EEE;
     padding: 0 3px;
