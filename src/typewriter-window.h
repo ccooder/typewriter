@@ -47,7 +47,7 @@ static void load_css_providers(TypewriterWindow *self);
 void typewriter_pause(TypewriterWindow *self);
 void typewriter_window_retype(TypewriterWindow *win);
 
-// 建议改为：
+// 跟打状态枚举
 typedef enum {
   TYPEWRITER_STATE_RETYPE_READY,
   TYPEWRITER_STATE_READY,
@@ -68,6 +68,7 @@ typedef struct {
   guint total_char_count;
   guint type_char_count;
   guint type_word_count;
+  guint word_char_count;
   guint backspace_count;
   guint enter_count;
   guint reform_count;

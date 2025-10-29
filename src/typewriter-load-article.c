@@ -181,4 +181,5 @@ void load_article_from_qq_group(TypewriterWindow *win) {
   printf("Hello from another platform!\n");
 #endif
 
+  typewriter_window_retype(win);
 }

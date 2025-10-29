@@ -190,6 +190,7 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
 
   if (tcc - self->stats.total_char_count > 1) {
     self->stats.type_word_count++;
+    self->stats.word_char_count += tcc - self->stats.total_char_count;
   } else if (tcc - self->stats.total_char_count == 1) {
     self->stats.type_char_count++;
   }

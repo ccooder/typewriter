@@ -310,8 +310,7 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
       seconds, milliseconds, win->stats.reform_count,
       win->stats.backspace_count, win->stats.enter_count,
       win->stats.stroke_count,
-      win->stats.type_word_count * 100.0 /
-          (win->stats.type_char_count + win->stats.type_word_count));
+      win->stats.word_char_count * 100.0 / win->stats.total_char_count);
 
   send_to_qq_group(win, grade);
 }
