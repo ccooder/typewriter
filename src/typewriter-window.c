@@ -313,6 +313,8 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
       win->stats.word_char_count * 100.0 / win->stats.total_char_count);
 
   send_to_qq_group(win, grade);
+
+  g_free(grade);
 }
 
 static void load_css_providers(TypewriterWindow *self) {
@@ -361,6 +363,7 @@ void typewriter_window_retype(TypewriterWindow *win) {
   win->stats.total_char_count = 0;
   win->stats.type_char_count = 0;
   win->stats.type_word_count = 0;
+  win->stats.word_char_count = 0;
   win->stats.backspace_count = 0;
   win->stats.enter_count = 0;
   win->stats.reform_count = 0;

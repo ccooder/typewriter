@@ -74,6 +74,15 @@ typedef struct {
   guint reform_count;
 } TypewriterStats;
 
+typedef struct {
+  gchar *segment;
+  gchar *code;
+  guint stroke_count;
+  guint segment_duration;
+
+
+} TypewriterSegment;
+
 struct _TypewriterWindow {
   GtkApplicationWindow parent_instance;
   GtkCssProvider *colors_provider;

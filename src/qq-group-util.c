@@ -199,7 +199,6 @@ void send_to_qq_group(TypewriterWindow *win, char *grade) {
 #else
   printf("Hello from another platform!\n");
 #endif
-  free(grade);
 }
 
 void on_qq_group_dropdown_clicked(GtkButton *button, gpointer user_data) {

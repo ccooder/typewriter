@@ -53,6 +53,14 @@
     padding: 0 3px;
 }
 
+.mid_info > label {
+    margin: 1px 0;
+    background-color: #267053;
+    color: #eeeeee;
+    font-size: 12px;
+    line-height: 1.1;
+}
+
 .follow {
     border: 0;
     border-bottom-left-radius: 5px;
