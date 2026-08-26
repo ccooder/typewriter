@@ -144,93 +144,127 @@ gboolean on_key_press(GtkEventControllerKey *controller, guint keyval,
   return FALSE;
 }
 
-void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
-                              gpointer user_data) {
-  // start_calculation_cb(user_data);
+// 撤销前from_chars字之后的比对结果：清上色、扣回正确数。
+// 中途插入/删除会使后续比对整体错位，从编辑点起全部失效重比。
+// 边界用字符数（=stats.total_char_count），两缓冲在边界处字符数相同；
+// 字节偏移在打过字节长不同的错字时两缓冲会错开，不能用
+static void invalidate_from(TypewriterWindow *self, gint from_chars) {
+  if (from_chars >= (gint)self->stats.total_char_count) {
+    return;
+  }
+  GtkTextBuffer *control_buffer =
+      gtk_text_view_get_buffer(GTK_TEXT_VIEW(self->control));
+  GtkTextIter from, to;
+  gtk_text_buffer_get_start_iter(control_buffer, &from);
+  gtk_text_iter_forward_chars(&from, from_chars);
+  to = from;
+  gtk_text_iter_forward_chars(&to, self->stats.total_char_count - from_chars);
+
+  gint removed_correct = 0, removed_chars = 0;
+  GtkTextIter cit = from;
+  while (gtk_text_iter_compare(&cit, &to) < 0) {
+    if (gtk_text_iter_has_tag(&cit, self->correct_tag)) {
+      removed_correct++;
+    }
+    gtk_text_iter_forward_char(&cit);
+    removed_chars++;
+  }
+  gtk_text_buffer_remove_tag(control_buffer, self->correct_tag, &from, &to);
+  gtk_text_buffer_remove_tag(control_buffer, self->incorrect_tag, &from, &to);
+
+  self->stats.correct_char_count -= removed_correct;
+  self->stats.total_char_count = from_chars;
+}
+
+// 跟打区中途插入：插入点之前的比对仍有效，其后失效
+void on_follow_insert_text(GtkTextBuffer *buffer, GtkTextIter *location,
+                           gchar *text, gint length, gpointer user_data) {
+  (void)buffer;
+  (void)text;
+  (void)length;
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
   if (self->state == TYPEWRITER_STATE_ENDED) {
     return;
   }
-  GtkTextIter start, end;
-  gtk_text_buffer_get_start_iter(follow_buffer, &start);
-  gtk_text_buffer_get_end_iter(follow_buffer, &end);
-  gchar *follow_text =
-      gtk_text_buffer_get_text(follow_buffer, &start, &end, FALSE);
+  invalidate_from(self, gtk_text_iter_get_offset(location));
+}
 
+// 跟打区删除：回改按实际删除字数计，删除点之前的比对仍有效、其后失效
+void on_follow_delete_range(GtkTextBuffer *buffer, GtkTextIter *start,
+                            GtkTextIter *end, gpointer user_data) {
+  (void)buffer;
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  if (self->state == TYPEWRITER_STATE_ENDED) {
+    return;
+  }
+  gint deleted = 0;
+  GtkTextIter it = *start;
+  while (gtk_text_iter_compare(&it, end) < 0) {
+    gtk_text_iter_forward_char(&it);
+    deleted++;
+  }
+  self->stats.reform_count += deleted;
+  invalidate_from(self, gtk_text_iter_get_offset(start));
+}
+
+void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
+                              gpointer user_data) {
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  if (self->state == TYPEWRITER_STATE_ENDED) {
+    return;
+  }
   GtkTextView *control = GTK_TEXT_VIEW(self->control);
   GtkTextBuffer *control_buffer = gtk_text_view_get_buffer(control);
-  gtk_text_buffer_get_start_iter(control_buffer, &start);
-  gtk_text_buffer_get_end_iter(control_buffer, &end);
-  gchar *control_text =
-      gtk_text_buffer_get_text(control_buffer, &start, &end, FALSE);
+  guint old_total = self->stats.total_char_count;
 
-  // 只移除并重打自己的两个tag（tag本身在init里创建一次）
-  gtk_text_buffer_remove_tag(control_buffer, self->correct_tag, &start, &end);
-  gtk_text_buffer_remove_tag(control_buffer, self->incorrect_tag, &start, &end);
-
-  // ponytail: 每次击键全量重上色是O(n)，千字长文×千次击键仍可承受；
-  // 真不够再改增量上色
-
-
-  GtkTextIter char_iter;
-  gtk_text_buffer_get_start_iter(follow_buffer, &char_iter);
-  // 临时变量,ccc为正确打字数，tcc为总打字数
-  guint ccc = 0;
-  guint tcc = 0;
-  int i;
-  for (i = 0; !gtk_text_iter_is_end(&char_iter) && control_text[i] != '\0';) {
-    tcc++;
-    GtkTextIter start_iter = char_iter;
-    gtk_text_iter_forward_char(&char_iter);
-
-    // Get the character from the typed buffer and reference text
-    char *typed_char =
-        gtk_text_buffer_get_text(follow_buffer, &start_iter, &char_iter, FALSE);
-    gunichar typed_unichar = g_utf8_get_char(typed_char);
-    gunichar ref_unichar = g_utf8_get_char(&control_text[i]);
-
-    // Compare and apply the correct tag
-    GtkTextIter control_start_iter, control_end_iter;
-    gtk_text_buffer_get_iter_at_offset(control_buffer, &control_start_iter,
-                                       gtk_text_iter_get_offset(&start_iter));
-    gtk_text_buffer_get_iter_at_offset(control_buffer, &control_end_iter,
-                                       gtk_text_iter_get_offset(&char_iter));
-    if (typed_unichar == ref_unichar) {
-      gtk_text_buffer_apply_tag(control_buffer, self->correct_tag,
-                                &control_start_iter, &control_end_iter);
+  // 增量比对：只处理上次边界之后的新字符（删除/中途插入已由
+  // delete-range/insert-text把边界退回到编辑点），上色只动新区间。
+  // 迭代器按字符数推进（get_offset/get_iter_at_offset分别是字符/字节单位，勿混用）
+  GtkTextIter f_it, c_it, c_next;
+  gtk_text_buffer_get_start_iter(follow_buffer, &f_it);
+  gtk_text_buffer_get_start_iter(control_buffer, &c_it);
+  gtk_text_iter_forward_chars(&f_it, old_total);
+  gtk_text_iter_forward_chars(&c_it, old_total);
+  guint ccc = self->stats.correct_char_count;
+  guint compared = 0;
+  while (!gtk_text_iter_is_end(&f_it) && !gtk_text_iter_is_end(&c_it)) {
+    c_next = c_it;
+    gtk_text_iter_forward_char(&c_next);
+    if (gtk_text_iter_get_char(&f_it) == gtk_text_iter_get_char(&c_it)) {
+      gtk_text_buffer_apply_tag(control_buffer, self->correct_tag, &c_it,
+                                &c_next);
       ccc++;
     } else {
-      gtk_text_buffer_apply_tag(control_buffer, self->incorrect_tag,
-                                &control_start_iter, &control_end_iter);
+      gtk_text_buffer_apply_tag(control_buffer, self->incorrect_tag, &c_it,
+                                &c_next);
     }
-
-    // Move to the next character in the reference text
-    i += g_unichar_to_utf8(ref_unichar, NULL);
-    g_free(typed_char);
+    gtk_text_iter_forward_char(&f_it);
+    gtk_text_iter_forward_char(&c_it);
+    compared++;
   }
-  gtk_text_buffer_get_iter_at_offset(control_buffer, &char_iter,
-                                     gtk_text_iter_get_offset(&char_iter));
-  gtk_text_iter_forward_chars(&char_iter, 7);
+  self->stats.correct_char_count = ccc;
+  self->stats.total_char_count = old_total + compared;
+
+  // 滚动跟随：打到当前位置前7字处，出视野才滚
+  GtkTextIter look;
+  gtk_text_buffer_get_start_iter(control_buffer, &look);
+  gtk_text_iter_forward_chars(&look, self->stats.total_char_count + 7);
   GdkRectangle location;
-  gtk_text_view_get_iter_location(control, &char_iter, &location);
+  gtk_text_view_get_iter_location(control, &look, &location);
   GdkRectangle visible_rect;
   gtk_text_view_get_visible_rect(control, &visible_rect);
   if (!gdk_rectangle_contains_point(&visible_rect, location.x + location.width,
                                     location.y + location.height)) {
-    gtk_text_view_scroll_to_iter(control, &char_iter, 0.1, TRUE, 0.5, 0.5);
+    gtk_text_view_scroll_to_iter(control, &look, 0.1, TRUE, 0.5, 0.5);
   }
 
-  if (tcc - self->stats.total_char_count > 1) {
+  // 打字/打词计数（一次变更多字=输入法整词上屏）
+  if (self->stats.total_char_count - old_total > 1) {
     self->stats.type_word_count++;
-    self->stats.word_char_count += tcc - self->stats.total_char_count;
-  } else if (tcc - self->stats.total_char_count == 1) {
+    self->stats.word_char_count += self->stats.total_char_count - old_total;
+  } else if (self->stats.total_char_count - old_total == 1) {
     self->stats.type_char_count++;
   }
-  self->stats.reform_count += self->stats.total_char_count > tcc
-                                  ? self->stats.total_char_count - tcc
-                                  : 0;
-  self->stats.correct_char_count = ccc;
-  self->stats.total_char_count = tcc;
 
   // 更新进度条（文章为空时不更新，避免除零得到nan）
   if (self->stats.text_length > 0) {
@@ -241,13 +275,8 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   }
 
   // 未开打（start_time为0，如空文章）不得结束，否则空文会立即结束并发出垃圾成绩
-  if (control_text[i] == '\0' && self->stats.start_time > 0) {
+  if (gtk_text_iter_is_end(&c_it) && self->stats.start_time > 0) {
     self->state = TYPEWRITER_STATE_ENDED;
     g_signal_emit_by_name(self, "TYPE_ENDED");
   }
-
-  // Handle cases where one string is longer than the other
-  // ... apply tags for remaining characters if needed
-  g_free(follow_text);
-  g_free(control_text);
 }

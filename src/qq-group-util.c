@@ -78,6 +78,7 @@ static QQGroupItem **list_qq_group_window_linux(TypewriterWindow *win,
 
   if (window_count == 0) {
     g_print("不存在QQ群窗口\n");
+    cleanup();
     return items;
   }
   for (int i = 0; i < window_count; i++) {
@@ -118,6 +119,8 @@ static gboolean send_paste_cb(gpointer data) {
   g_print("\n=== 激活QQ窗口并粘贴 ===\n");
   activate_window(win->selected_group->win);
   send_qq_msg();
+  // 阶段内自开自关：全局连接若被下拉枚举等他处开关，不会互相干扰
+  cleanup();
   paste_ready = TRUE;
   return G_SOURCE_REMOVE;
 }
@@ -125,14 +128,20 @@ static gboolean send_paste_cb(gpointer data) {
 // 发送阶段：等正文落进输入框后再回车，否则发出去的是框里的旧内容
 static gboolean send_enter_cb(gpointer data) {
   TypewriterWindow *win = TYPEWRITER_WINDOW(data);
-  if (paste_ready) {
-    gboolean ctrl_enter =
-        win->settings != NULL &&
-        g_settings_get_boolean(win->settings, "ctrl-enter-send");
-    send_enter(ctrl_enter);
-    cleanup();
-    paste_ready = FALSE;
+  if (!paste_ready) {
+    return G_SOURCE_REMOVE;
   }
+  paste_ready = FALSE;
+  if (init_x11() != 0) {
+    return G_SOURCE_REMOVE;
+  }
+  // 期间焦点可能已回到跟打器，重新指向QQ窗口
+  activate_window(win->selected_group->win);
+  gboolean ctrl_enter = win->settings != NULL &&
+                        g_settings_get_boolean(win->settings,
+                                               "ctrl-enter-send");
+  send_enter(ctrl_enter);
+  cleanup();
   return G_SOURCE_REMOVE;
 }
 
@@ -211,10 +220,9 @@ void list_qq_group_window(TypewriterWindow *win) {
 }
 
 void send_to_qq_group(TypewriterWindow *win, char *grade) {
-  GdkDisplay *display;
-
-  display = gtk_widget_get_display(GTK_WIDGET(win));
-  GdkClipboard *clipboard = gdk_display_get_clipboard(display);
+  // 潜水时仍写剪贴板：成绩留着手动粘贴发给别人
+  GdkClipboard *clipboard =
+      gdk_display_get_clipboard(gtk_widget_get_display(GTK_WIDGET(win)));
   gdk_clipboard_set_text(clipboard, grade);
   Window qq_win = win->selected_group->win;
   if (qq_win == 0) {

@@ -17,5 +17,9 @@
 			<default>false</default>
 			<summary>QQ发送键是否为Ctrl+Enter（否则为Enter）</summary>
 		</key>
+		<key name="ime-name" type="s">
+			<default>""</default>
+			<summary>成绩单显示的输入法名，留空则自动探测输入法框架</summary>
+		</key>
 	</schema>
 </schemalist>

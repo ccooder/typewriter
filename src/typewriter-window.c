@@ -247,6 +247,11 @@ static void typewriter_window_init(TypewriterWindow *self) {
       gtk_text_view_get_buffer(GTK_TEXT_VIEW(self->follow));
   g_signal_connect(follow_buffer, "changed",
                    G_CALLBACK(on_follow_buffer_changed), self);
+  // 增量比对：中途编辑时把比对边界退回到编辑点
+  g_signal_connect(follow_buffer, "insert-text",
+                   G_CALLBACK(on_follow_insert_text), self);
+  g_signal_connect(follow_buffer, "delete-range",
+                   G_CALLBACK(on_follow_delete_range), self);
   g_signal_connect(self->follow, "preedit-changed",
                    G_CALLBACK(on_preedit_changed), self);
   GtkEventController *focus_controller = gtk_event_controller_focus_new();
@@ -372,6 +377,30 @@ static void start_calculation_cb(gpointer user_data) {
   g_object_unref(task);
 }
 
+// 成绩单里的输入法名：用户设置优先；留空则按环境变量探测框架
+// （框架内的具体方案如98五笔无法探测，需用户自行填写）
+static gchar *get_ime_label(TypewriterWindow *win) {
+  if (win->settings != NULL) {
+    gchar *custom = g_settings_get_string(win->settings, "ime-name");
+    if (custom != NULL && *custom != '\0') {
+      return custom;
+    }
+    g_free(custom);
+  }
+  const char *module = g_getenv("GTK_IM_MODULE");
+  if (module == NULL || *module == '\0') {
+    // XMODIFIERS形如@im=fcitx
+    const char *xmodifiers = g_getenv("XMODIFIERS");
+    if (xmodifiers != NULL && g_str_has_prefix(xmodifiers, "@im=")) {
+      module = xmodifiers + 4;
+    }
+  }
+  if (g_strcmp0(module, "fcitx") == 0) return g_strdup("Fcitx");
+  if (g_strcmp0(module, "fcitx5") == 0) return g_strdup("Fcitx5");
+  if (g_strcmp0(module, "ibus") == 0) return g_strdup("iBus");
+  return g_strdup("系统输入法");
+}
+
 static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
   // 空文章结束时可能从未启动过计时器
   if (win->update_timer_id > 0) {
@@ -419,16 +448,18 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
           ? win->stats.word_char_count * 100.0 / win->stats.total_char_count
           : 0.0;
 
+  gchar *ime = get_ime_label(win);
   char *grade = g_strdup_printf(
       "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 错字%d 时间%02u:%02u.%03u 回改%d "
-      "退格%d 回车%d 键数%d 打词%.2f%% 输入法:Rime·98五笔 NFLinux跟打器\n",
+      "退格%d 回车%d 键数%d 打词%.2f%% 输入法:%s NFLinux跟打器\n",
       win->article_name, overall_typing_speed, stroke, avg_code_len,
       win->stats.total_char_count,
       win->stats.total_char_count - win->stats.correct_char_count, minutes,
       seconds, milliseconds, win->stats.reform_count,
       win->stats.backspace_count, win->stats.enter_count,
       win->stats.stroke_count,
-      word_ratio);
+      word_ratio, ime);
+  g_free(ime);
 
   send_to_qq_group(win, grade);
 
@@ -452,8 +483,10 @@ void typewriter_pause(TypewriterWindow *self) {
   g_assert(TYPEWRITER_IS_WINDOW(self));
   self->state = TYPEWRITER_STATE_PAUSING;
   // 停止打字计时器
-  g_source_remove(self->update_timer_id);
-  self->update_timer_id = 0;
+  if (self->update_timer_id > 0) {
+    g_source_remove(self->update_timer_id);
+    self->update_timer_id = 0;
+  }
   // 记录暂停开始时间
   self->stats.pause_start_time = g_get_monotonic_time();
 }

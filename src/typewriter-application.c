@@ -154,22 +154,42 @@ static void typewriter_application_preferences_action(GSimpleAction *action,
   // 设置窗口：每次打开现建，勾选状态直接绑GSettings
   GtkWidget *check =
       gtk_check_button_new_with_label("Send grade with Ctrl+Enter");
-  gtk_widget_set_margin_top(check, 12);
-  gtk_widget_set_margin_bottom(check, 12);
-  gtk_widget_set_margin_start(check, 16);
-  gtk_widget_set_margin_end(check, 16);
   gtk_widget_set_tooltip_text(
       check, "Checked: send with Ctrl+Enter; unchecked: Enter (match your QQ "
              "send-key setting)");
+
+  GtkWidget *ime_label = gtk_label_new("IME name in grade:");
+  GtkWidget *ime_entry = gtk_entry_new();
+  gtk_entry_set_placeholder_text(GTK_ENTRY(ime_entry),
+                                 "Auto-detect (framework only)");
+  gtk_widget_set_hexpand(ime_entry, TRUE);
+  gtk_widget_set_tooltip_text(
+      ime_entry, "Empty = auto-detect the IM framework via GTK_IM_MODULE/"
+                 "XMODIFIERS; set e.g. 'Rime·98五笔' to report a specific "
+                 "schema");
+
+  GtkWidget *ime_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(ime_row), ime_label);
+  gtk_box_append(GTK_BOX(ime_row), ime_entry);
+
+  GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
+  gtk_widget_set_margin_top(box, 12);
+  gtk_widget_set_margin_bottom(box, 12);
+  gtk_widget_set_margin_start(box, 16);
+  gtk_widget_set_margin_end(box, 16);
+  gtk_box_append(GTK_BOX(box), check);
+  gtk_box_append(GTK_BOX(box), ime_row);
 
   GtkWidget *dialog = gtk_window_new();
   gtk_window_set_title(GTK_WINDOW(dialog), "Preferences");
   gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(win));
   gtk_window_set_destroy_with_parent(GTK_WINDOW(dialog), TRUE);
-  gtk_window_set_default_size(GTK_WINDOW(dialog), 300, 70);
-  gtk_window_set_child(GTK_WINDOW(dialog), check);
+  gtk_window_set_default_size(GTK_WINDOW(dialog), 360, 100);
+  gtk_window_set_child(GTK_WINDOW(dialog), box);
   if (win->settings != NULL) {
     g_settings_bind(win->settings, "ctrl-enter-send", check, "active",
+                    G_SETTINGS_BIND_DEFAULT);
+    g_settings_bind(win->settings, "ime-name", ime_entry, "text",
                     G_SETTINGS_BIND_DEFAULT);
   }
   gtk_window_present(GTK_WINDOW(dialog));
