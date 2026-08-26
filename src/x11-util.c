@@ -26,6 +26,7 @@ int init_x11() {
 void cleanup() {
   if (x11display) {
     XCloseDisplay(x11display);
+    x11display = NULL;
   }
 }
 
@@ -296,36 +297,32 @@ char *get_window_text(Window win) {
   return selection_text;
 }
 
-// 给QQ窗口粘贴文本
+// 给QQ窗口粘贴文本（Ctrl+V）。
+// 正文落进输入框依赖GDK在主循环里响应QQ的selection请求，
+// 调用后必须回到主循环等待，不能紧接着发回车
 void send_qq_msg() {
-  // 模拟按下Ctrl+V粘贴到QQ窗口
   KeyCode keycode_v = XKeysymToKeycode(x11display, XK_V);
   KeyCode keycode_control = XKeysymToKeycode(x11display, XK_Control_L);
-  KeyCode keycode_enter = XKeysymToKeycode(x11display, XK_Return);
 
-  // // 按下Control
   XTestFakeKeyEvent(x11display, keycode_control, True, CurrentTime);
-  // // 按下v
   XTestFakeKeyEvent(x11display, keycode_v, True, CurrentTime);
-  // // 释放v
   XTestFakeKeyEvent(x11display, keycode_v, False, CurrentTime);
-  // // 释放Control
   XTestFakeKeyEvent(x11display, keycode_control, False, CurrentTime);
-
-  g_print("粘贴完成\n");
-  // TODO NFL X11
-  // 粘贴必须等所有的等待时间完成才会真正粘贴成功，暂未找到原因，先自动粘贴手动发送消息
-  // g_print("发送回车\n");
-  // // 按下Control
-  // XTestFakeKeyEvent(x11display, keycode_control, True, CurrentTime);
-  // // 按下回车
-  // XTestFakeKeyEvent(x11display, keycode_enter, True, CurrentTime);
-  // // 释放回车
-  // XTestFakeKeyEvent(x11display, keycode_enter, False, CurrentTime);
-  // // 释放Control
-  // XTestFakeKeyEvent(x11display, keycode_control, False, CurrentTime);
-  //
   XFlush(x11display);
-  // 等待100ms让粘贴完成
-  usleep(100000);
+}
+
+// 发送，ctrl_enter为真时按Ctrl+Enter（QQ发送键可配置，两种都要支持）
+void send_enter(gboolean ctrl_enter) {
+  KeyCode keycode_enter = XKeysymToKeycode(x11display, XK_Return);
+  KeyCode keycode_control = XKeysymToKeycode(x11display, XK_Control_L);
+
+  if (ctrl_enter) {
+    XTestFakeKeyEvent(x11display, keycode_control, True, CurrentTime);
+  }
+  XTestFakeKeyEvent(x11display, keycode_enter, True, CurrentTime);
+  XTestFakeKeyEvent(x11display, keycode_enter, False, CurrentTime);
+  if (ctrl_enter) {
+    XTestFakeKeyEvent(x11display, keycode_control, False, CurrentTime);
+  }
+  XFlush(x11display);
 }

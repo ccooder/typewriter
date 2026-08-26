@@ -141,7 +141,42 @@ static void typewriter_application_retype_action(GSimpleAction *action,
 
 
 
+static void typewriter_application_preferences_action(GSimpleAction *action,
+                                                       GVariant *parameter,
+                                                       gpointer user_data) {
+  TypewriterApplication *self = user_data;
+
+  g_assert(TYPEWRITER_IS_APPLICATION(self));
+
+  TypewriterWindow *win = TYPEWRITER_WINDOW(
+      gtk_application_get_active_window(GTK_APPLICATION(self)));
+
+  // 设置窗口：每次打开现建，勾选状态直接绑GSettings
+  GtkWidget *check =
+      gtk_check_button_new_with_label("Send grade with Ctrl+Enter");
+  gtk_widget_set_margin_top(check, 12);
+  gtk_widget_set_margin_bottom(check, 12);
+  gtk_widget_set_margin_start(check, 16);
+  gtk_widget_set_margin_end(check, 16);
+  gtk_widget_set_tooltip_text(
+      check, "Checked: send with Ctrl+Enter; unchecked: Enter (match your QQ "
+             "send-key setting)");
+
+  GtkWidget *dialog = gtk_window_new();
+  gtk_window_set_title(GTK_WINDOW(dialog), "Preferences");
+  gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(win));
+  gtk_window_set_destroy_with_parent(GTK_WINDOW(dialog), TRUE);
+  gtk_window_set_default_size(GTK_WINDOW(dialog), 300, 70);
+  gtk_window_set_child(GTK_WINDOW(dialog), check);
+  if (win->settings != NULL) {
+    g_settings_bind(win->settings, "ctrl-enter-send", check, "active",
+                    G_SETTINGS_BIND_DEFAULT);
+  }
+  gtk_window_present(GTK_WINDOW(dialog));
+}
+
 static const GActionEntry app_actions[] = {
+    {"preferences", typewriter_application_preferences_action},
     {"load_file", typewriter_application_load_file_action},
     {"load_clipboard", typewriter_application_load_clipboard_action},
     {"load_qq_group", typewriter_application_load_qq_group_action},

@@ -33,6 +33,6 @@ Window find_window_by_title(const char *title_pattern, char *class_name);
 char* get_window_text(Window win);
 // 给QQ发送消息
 void send_qq_msg();
-void send_enter();
+void send_enter(gboolean ctrl_enter);
 
 #endif  // NFL_TYPEWRITER_X11_UTIL_H

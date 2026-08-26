@@ -13,5 +13,9 @@
 			<default>false</default>
 			<summary>窗口是否最大化</summary>
 		</key>
+		<key name="ctrl-enter-send" type="b">
+			<default>false</default>
+			<summary>QQ发送键是否为Ctrl+Enter（否则为Enter）</summary>
+		</key>
 	</schema>
 </schemalist>

@@ -104,21 +104,43 @@ static QQGroupItem **list_qq_group_window_linux(TypewriterWindow *win,
   return items;
 }
 
-static void send_to_qq_group_linux(TypewriterWindow *win) {
-  // 发送成绩到QQ
+// 粘贴阶段：激活QQ窗口并Ctrl+V。
+// 此时主循环空闲，GDK才能响应QQ的selection请求把正文交出去
+static gboolean paste_ready = FALSE;
+
+static gboolean send_paste_cb(gpointer data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(data);
+  paste_ready = FALSE;
   if (init_x11() != 0) {
     g_print("Cannot open display\n");
-    return;
+    return G_SOURCE_REMOVE;
   }
-  Window qq_win = win->selected_group->win;
-  if (qq_win != None) {
-    g_print("\n=== 激活QQ窗口 ===\n");
-    activate_window(qq_win);
-    send_qq_msg();
-  } else {
-    g_print("未找到QQ窗口\n");
+  g_print("\n=== 激活QQ窗口并粘贴 ===\n");
+  activate_window(win->selected_group->win);
+  send_qq_msg();
+  paste_ready = TRUE;
+  return G_SOURCE_REMOVE;
+}
+
+// 发送阶段：等正文落进输入框后再回车，否则发出去的是框里的旧内容
+static gboolean send_enter_cb(gpointer data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(data);
+  if (paste_ready) {
+    gboolean ctrl_enter =
+        win->settings != NULL &&
+        g_settings_get_boolean(win->settings, "ctrl-enter-send");
+    send_enter(ctrl_enter);
+    cleanup();
+    paste_ready = FALSE;
   }
-  cleanup();
+  return G_SOURCE_REMOVE;
+}
+
+static void send_to_qq_group_linux(TypewriterWindow *win) {
+  // 必须分阶段异步执行：GDK在主循环里才响应QQ的剪贴板selection请求，
+  // 同步做完粘贴+回车会导致回车先到、正文后到
+  g_timeout_add(300, send_paste_cb, win);
+  g_timeout_add(800, send_enter_cb, win);
 }
 
 static void send_to_qq_group_macos(TypewriterWindow *win) {
