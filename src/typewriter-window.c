@@ -25,10 +25,50 @@
 #include "qq-group-util.h"
 #include "typewriter-input.h"
 #include "typewriter-ui.h"
+
+#if defined(__linux__)
 #include "x11-util.h"
+#include <gdk/x11/gdkx.h>
+#endif
 
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
                     GTK_TYPE_APPLICATION_WINDOW)
+
+// GTK4在X11上notify::is-maximized不随WM外部改态触发，只能轮询diff写回；
+// 在变化时刻即落盘，从而不依赖任何退出时机（尺寸同理，经绑定实时写回）
+static gboolean poll_maximized(gpointer user_data) {
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  gboolean maximized = gtk_window_is_maximized(GTK_WINDOW(self));
+  if (maximized != g_settings_get_boolean(self->settings, "window-maximized")) {
+    g_settings_set_boolean(self->settings, "window-maximized", maximized);
+  }
+  return G_SOURCE_CONTINUE;
+}
+
+#if defined(__linux__)
+// GTK4移除窗口定位API，且映射前自设的USPosition提示会被GTK映射时的hints
+// 重写覆盖——只能首次映射后经X11移到主显示器中央
+static void center_window(TypewriterWindow *self) {
+  GdkDisplay *display = gtk_widget_get_display(GTK_WIDGET(self));
+  if (!GDK_IS_X11_DISPLAY(display)) return;
+  GdkSurface *surface = gtk_native_get_surface(GTK_NATIVE(self));
+  if (surface == NULL) return;
+
+  GdkRectangle geom;
+  gdk_monitor_get_geometry(gdk_x11_display_get_primary_monitor(display), &geom);
+  // map时surface尚为1x1（首次configure未达），须用default_size计算
+  gint w = 0, h = 0;
+  gtk_window_get_default_size(GTK_WINDOW(self), &w, &h);
+  XMoveWindow(GDK_DISPLAY_XDISPLAY(display), GDK_SURFACE_XID(surface),
+              geom.x + (geom.width - w) / 2, geom.y + (geom.height - h) / 2);
+}
+
+static void on_first_map(GtkWidget *widget, gpointer user_data) {
+  // 只在首次映射时居中，最小化还原不再移动
+  g_signal_handlers_disconnect_by_func(widget, G_CALLBACK(on_first_map), NULL);
+  center_window(TYPEWRITER_WINDOW(widget));
+}
+#endif
 
 static void typewriter_window_dispose(GObject *object) {
   TypewriterWindow *self = TYPEWRITER_WINDOW(object);
@@ -37,6 +77,11 @@ static void typewriter_window_dispose(GObject *object) {
     g_source_remove(self->update_timer_id);
     self->update_timer_id = 0;
   }
+  if (self->maximized_poll_id > 0) {
+    g_source_remove(self->maximized_poll_id);
+    self->maximized_poll_id = 0;
+  }
+  g_clear_object(&self->settings);
   g_clear_object(&self->colors_provider);
   // 先解除ListView与模型的关联再释放store：若store先死，部件销毁时
   // gtk_list_item_manager还会查询模型，触发clear_model断言崩溃
@@ -122,6 +167,25 @@ static void typewriter_window_init(TypewriterWindow *self) {
   // gtk_widget_set_cursor(self->mid_info, move_cursor);
   // g_object_unref(move_cursor);
 
+  // 窗口几何持久化：schema未安装（如buildDir直接运行）时静默关闭该功能。
+  // GTK4已移除窗口定位API，位置由窗口管理器负责，此处只持久化尺寸与最大化
+  GSettingsSchema *schema = g_settings_schema_source_lookup(
+      g_settings_schema_source_get_default(), "run.fenglu.typewriter", FALSE);
+  if (schema != NULL) {
+    self->settings = g_settings_new("run.fenglu.typewriter");
+    g_settings_schema_unref(schema);
+    // 尺寸经default-width/height双向绑定，拖动即写回
+    g_settings_bind(self->settings, "window-width", self, "default-width",
+                    G_SETTINGS_BIND_DEFAULT);
+    g_settings_bind(self->settings, "window-height", self, "default-height",
+                    G_SETTINGS_BIND_DEFAULT);
+    // 最大化轮询写回（500ms粒度，diff才写）
+    self->maximized_poll_id = g_timeout_add(500, poll_maximized, self);
+    if (g_settings_get_boolean(self->settings, "window-maximized")) {
+      gtk_window_maximize(GTK_WINDOW(self));
+    }
+  }
+
   // 初始化状态变量
   self->state = TYPEWRITER_STATE_READY;
   self->stats.start_time = 0;
@@ -138,6 +202,7 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->stats.enter_count = 0;
   self->stats.reform_count = 0;
   self->update_timer_id = 0;
+  self->maximized_poll_id = 0;
   self->max_queue_size = 16;  // 存储最近16次击键时间
   self->key_time_queue = g_queue_new();
   self->qq_group_list_store = g_list_store_new(QQ_GROUP_TYPE_ITEM);
@@ -199,6 +264,10 @@ static void typewriter_window_init(TypewriterWindow *self) {
                    G_CALLBACK(on_qq_group_selected), self);
   // g_signal_connect_after(self->qq_group_dropdown, "notify::selected",
   // G_CALLBACK(on_qq_group_activate), NULL);
+
+#if defined(__linux__)
+  g_signal_connect(self, "map", G_CALLBACK(on_first_map), NULL);
+#endif
 }
 
 TypewriterWindow *typewriter_window_new(TypewriterApplication *app) {

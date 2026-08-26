@@ -28,6 +28,10 @@ install_data('run.fenglu.typewriter.gschema.xml',
   install_dir: get_option('datadir') / 'glib-2.0' / 'schemas'
 )
 
+# 编译到构建目录：开发运行时配合
+# GSETTINGS_SCHEMA_DIR=buildDir/data ./buildDir/src/typewriter 使用
+gnome.compile_schemas(build_by_default: true)
+
 compile_schemas = find_program('glib-compile-schemas', required: false, disabler: true)
 test('Validate schema file',
      compile_schemas,

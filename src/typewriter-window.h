@@ -129,6 +129,10 @@ struct _TypewriterWindow {
   GtkTextTag *incorrect_tag;
 
   guint update_timer_id;
+  // 最大化状态轮询定时器
+  guint maximized_poll_id;
+  // 窗口几何持久化（schema未安装时为NULL，功能静默关闭）
+  GSettings *settings;
   // 实时击键速度
   GQueue *key_time_queue;
   guint max_queue_size;
