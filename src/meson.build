@@ -38,7 +38,10 @@ deps = declare_dependency(
     sources : typewriter_sources,
 )
 
-executable(meson.project_name(),
+exe = executable(meson.project_name(),
            dependencies : deps,
            install : true,
 )
+
+# 成绩计算assert自检（--self-test分支不创建应用，无需显示环境）
+test('stats self-test', exe, args: ['--self-test'])

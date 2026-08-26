@@ -22,10 +22,18 @@
 
 #include "config.h"
 #include "typewriter-application.h"
+#include "typewriter-ui.h"
 
 int main(int argc, char *argv[]) {
   g_autoptr(TypewriterApplication) app = NULL;
   int ret;
+
+  // 成绩计算自检，不需要显示环境
+  if (argc > 1 && g_strcmp0(argv[1], "--self-test") == 0) {
+    typewriter_stats_self_test();
+    g_print("self-test ok\n");
+    return 0;
+  }
 
   bindtextdomain(GETTEXT_PACKAGE, LOCALEDIR);
   bind_textdomain_codeset(GETTEXT_PACKAGE, "UTF-8");

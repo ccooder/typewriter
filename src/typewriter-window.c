@@ -407,63 +407,21 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
     g_source_remove(win->update_timer_id);
     win->update_timer_id = 0;
   }
-  gint64 current_time = g_get_monotonic_time();
-  gint64 elapsed_time_ms =
-      (current_time - win->stats.start_time - win->stats.pause_duration) /
-      1000.0;
-
-  // 计算平均指标
-  double overall_typing_speed = 0.0;
-  if (elapsed_time_ms > 0 && win->stats.total_char_count > 0) {
-    // 转换为分钟并计算每分钟字数
-    overall_typing_speed =
-        (win->stats.total_char_count * 60000.0) / elapsed_time_ms;
-    label_set_printf(GTK_LABEL(win->speed), "%.2f", overall_typing_speed);
-  }
-
-  // 显示击键与码长信息（分母为0时记0，避免inf/nan）
-  double stroke =
-      elapsed_time_ms > 0
-          ? (double)win->stats.stroke_count * 1000.0 / elapsed_time_ms
-          : 0.0;
-  label_set_printf(GTK_LABEL(win->stroke), "%.2f", stroke);
-  double avg_code_len =
-      win->stats.total_char_count > 0
-          ? (double)win->stats.stroke_count / win->stats.total_char_count
-          : 0.0;
-  label_set_printf(GTK_LABEL(win->code_len), "%.2f", avg_code_len);
-
-  // 显示用时
-  guint seconds = elapsed_time_ms / 1000;
-  guint minutes = seconds / 60;
-  seconds = seconds % 60;
-  guint milliseconds = elapsed_time_ms % 1000;
-
-  label_set_printf(GTK_LABEL(win->timer), "%02u:%02u.%03u", minutes, seconds,
-                   milliseconds);
-
-  // 打词比例（总字数为0时记0）
-  double word_ratio =
-      win->stats.total_char_count > 0
-          ? win->stats.word_char_count * 100.0 / win->stats.total_char_count
-          : 0.0;
+  win->stats.end_time = g_get_monotonic_time();
 
   gchar *ime = get_ime_label(win);
-  char *grade = g_strdup_printf(
-      "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 错字%d 时间%02u:%02u.%03u 回改%d "
-      "退格%d 回车%d 键数%d 打词%.2f%% 输入法:%s NFLinux跟打器\n",
-      win->article_name, overall_typing_speed, stroke, avg_code_len,
-      win->stats.total_char_count,
-      win->stats.total_char_count - win->stats.correct_char_count, minutes,
-      seconds, milliseconds, win->stats.reform_count,
-      win->stats.backspace_count, win->stats.enter_count,
-      win->stats.stroke_count,
-      word_ratio, ime);
+  TypewriterGrade g = typewriter_build_grade(win->article_name, &win->stats, ime);
   g_free(ime);
 
-  send_to_qq_group(win, grade);
+  label_set_printf(GTK_LABEL(win->speed), "%.2f", g.speed);
+  label_set_printf(GTK_LABEL(win->stroke), "%.2f", g.stroke);
+  label_set_printf(GTK_LABEL(win->code_len), "%.2f", g.code_len);
+  label_set_printf(GTK_LABEL(win->timer), "%02u:%02u.%03u", g.minutes,
+                   g.seconds, g.milliseconds);
 
-  g_free(grade);
+  send_to_qq_group(win, g.grade);
+
+  g_free(g.grade);
 }
 
 static void load_css_providers(TypewriterWindow *self) {
