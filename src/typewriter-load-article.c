@@ -9,12 +9,19 @@
 #include <x11-util.h>
 
 #include "qq-group-item.h"
+#include "typewriter-ui.h"
 #include "typewriter-window.h"
 
 static void load_text(TypewriterWindow *win, char *text) {
   // 成功获取到文本，可以在这里进行处理
+  // 本函数内部分配的text副本，函数结束前释放
+  gchar *owned_text = NULL;
+
+  // 默认来源标记，赛文格式匹配成功时覆盖
+  g_free(win->article_name);
+  win->article_name = g_strdup("来自剪贴板");
   gtk_label_set_text(GTK_LABEL(win->info), "来自剪贴板");
-  win->article_name = "来自剪贴板";
+
   // 首先检测是否赛文格式
   GError *regex_error = NULL;
   GRegex *regex = g_regex_new("(.*?)\\n(.*?)\\n-----(第\\d+段).*?",
@@ -22,21 +29,22 @@ static void load_text(TypewriterWindow *win, char *text) {
   if (regex_error != NULL) {
     g_printerr("Error compiling regex: %s\n", regex_error->message);
     g_error_free(regex_error);
-  }
-
-  if (regex_error == NULL) {
+  } else {
     GMatchInfo *match_info = NULL;
     g_regex_match(regex, text, 0, &match_info);
     if (g_match_info_matches(match_info)) {
+      gchar *sender = g_match_info_fetch(match_info, 1);
+      g_free(win->article_name);
       win->article_name = g_match_info_fetch(match_info, 3);
-      gtk_label_set_label(
-          GTK_LABEL(win->info),
-          g_strdup_printf("%s-%s", g_match_info_fetch(match_info, 1),
-                          win->article_name));
-      text = g_match_info_fetch(match_info, 2);
-      g_free(match_info);
-      g_free(regex);
+      label_set_printf(GTK_LABEL(win->info), "%s-%s", sender,
+                       win->article_name);
+      g_free(sender);
+      // 匹配成功，text切换到正文部分（原字符串由调用方释放）
+      owned_text = g_match_info_fetch(match_info, 2);
+      text = owned_text;
     }
+    g_match_info_free(match_info);
+    g_regex_unref(regex);
   }
 
   regex = g_regex_new("\\s", G_REGEX_DEFAULT, 0, &regex_error);
@@ -44,7 +52,13 @@ static void load_text(TypewriterWindow *win, char *text) {
     g_printerr("Error compiling regex: %s\n", regex_error->message);
     g_error_free(regex_error);
   } else {
-    text = g_regex_replace(regex, text, -1, 0, "", 0, &regex_error);
+    gchar *stripped = g_regex_replace(regex, text, -1, 0, "", 0, &regex_error);
+    g_regex_unref(regex);
+    if (stripped != NULL) {
+      g_free(owned_text);
+      owned_text = stripped;
+      text = owned_text;
+    }
   }
   GtkTextBuffer *buffer = gtk_text_view_get_buffer(GTK_TEXT_VIEW(win->control));
   gtk_text_buffer_set_text(buffer, text, -1);
@@ -53,9 +67,9 @@ static void load_text(TypewriterWindow *win, char *text) {
   int text_length = g_utf8_strlen(text, -1);
   win->stats.text_length = text_length;
   // 更新总字数标签
-  gtk_label_set_text(GTK_LABEL(win->words),
-                     g_strdup_printf("共%d字", text_length));
+  label_set_printf(GTK_LABEL(win->words), "共%d字", text_length);
 
+  g_free(owned_text);
 }
 
 static void load_clipboard_text(GdkClipboard *clipboard, GAsyncResult *result,

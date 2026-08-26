@@ -3,7 +3,19 @@
 //
 
 #include "typewriter-ui.h"
+
+#include <stdarg.h>
+
 #include "typewriter-window.h"
+
+void label_set_printf(GtkLabel *label, const char *format, ...) {
+  va_list args;
+  va_start(args, format);
+  gchar *text = g_strdup_vprintf(format, args);
+  va_end(args);
+  gtk_label_set_text(label, text);
+  g_free(text);
+}
 
 gboolean update_stat_ui(gpointer user_data) {
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
@@ -22,9 +34,8 @@ gboolean update_stat_ui(gpointer user_data) {
   seconds = seconds % 60;
   guint milliseconds = elapsed_time_ms % 1000;
 
-  gtk_label_set_text(
-      GTK_LABEL(self->timer),
-      g_strdup_printf("%02u:%02u.%03u", minutes, seconds, milliseconds));
+  label_set_printf(GTK_LABEL(self->timer), "%02u:%02u.%03u", minutes, seconds,
+                   milliseconds);
 
   // 计算实时击键速度（最近几次击键的平均速度）
   double realtime_stroke_speed = 0.0;
@@ -44,8 +55,7 @@ gboolean update_stat_ui(gpointer user_data) {
     // 计算码长
     if (self->stats.total_char_count > 0) {
       gdouble code_len = self->stats.stroke_count * 1.0 / self->stats.total_char_count;
-      gtk_label_set_text(GTK_LABEL(self->code_len),
-                         g_strdup_printf("%.2f", code_len));
+      label_set_printf(GTK_LABEL(self->code_len), "%.2f", code_len);
     }
   }
 
@@ -58,10 +68,8 @@ gboolean update_stat_ui(gpointer user_data) {
   }
 
   // 显示速度与击键信息
-  gtk_label_set_text(GTK_LABEL(self->speed),
-                     g_strdup_printf("%.2f", overall_typing_speed));
-  gtk_label_set_text(GTK_LABEL(self->stroke),
-                     g_strdup_printf("%.2f", realtime_stroke_speed));
+  label_set_printf(GTK_LABEL(self->speed), "%.2f", overall_typing_speed);
+  label_set_printf(GTK_LABEL(self->stroke), "%.2f", realtime_stroke_speed);
 
   return G_SOURCE_CONTINUE;
 }

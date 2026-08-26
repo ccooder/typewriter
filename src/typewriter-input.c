@@ -9,8 +9,8 @@
 
 void on_preedit_changed(GtkTextView *self, gchar *preedit, gpointer user_data) {
   TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
-  win->preedit_buffer = g_malloc(sizeof(char) * (strlen(preedit) + 1));
-  strcpy(win->preedit_buffer, preedit);
+  g_free(win->preedit_buffer);
+  win->preedit_buffer = g_strdup(preedit);
 }
 
 static gboolean handle_special_keys(TypewriterWindow *self, guint keyval) {

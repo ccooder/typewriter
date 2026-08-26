@@ -30,8 +30,43 @@
 G_DEFINE_FINAL_TYPE(TypewriterWindow, typewriter_window,
                     GTK_TYPE_APPLICATION_WINDOW)
 
+static void typewriter_window_dispose(GObject *object) {
+  TypewriterWindow *self = TYPEWRITER_WINDOW(object);
+
+  if (self->update_timer_id > 0) {
+    g_source_remove(self->update_timer_id);
+    self->update_timer_id = 0;
+  }
+  g_clear_object(&self->colors_provider);
+  // 先解除ListView与模型的关联再释放store：若store先死，部件销毁时
+  // gtk_list_item_manager还会查询模型，触发clear_model断言崩溃
+  if (self->qq_group_list != NULL) {
+    gtk_list_view_set_model(GTK_LIST_VIEW(self->qq_group_list), NULL);
+    self->qq_group_list = NULL;  // 模板子部件交由模板销毁，二次dispose不再触碰
+  }
+  g_clear_object(&self->qq_group_list_store);
+  // selected_group借用的是store内对象，store释放后置空
+  self->selected_group = NULL;
+
+  G_OBJECT_CLASS(typewriter_window_parent_class)->dispose(object);
+}
+
+static void typewriter_window_finalize(GObject *object) {
+  TypewriterWindow *self = TYPEWRITER_WINDOW(object);
+
+  g_clear_pointer(&self->preedit_buffer, g_free);
+  g_clear_pointer(&self->article_name, g_free);
+  g_clear_pointer(&self->key_time_queue, g_queue_free);
+
+  G_OBJECT_CLASS(typewriter_window_parent_class)->finalize(object);
+}
+
 static void typewriter_window_class_init(TypewriterWindowClass *klass) {
   GtkWidgetClass *widget_class = GTK_WIDGET_CLASS(klass);
+  GObjectClass *object_class = G_OBJECT_CLASS(klass);
+
+  object_class->dispose = typewriter_window_dispose;
+  object_class->finalize = typewriter_window_finalize;
 
   gtk_widget_class_set_template_from_resource(
       widget_class, "/run/fenglu/typewriter/typewriter-window.ui");
@@ -168,11 +203,11 @@ void typewriter_window_open(TypewriterWindow *win) {
       "欢迎您使用牛逢路的Linux版跟打器，快捷键如下：F3重打，F5从QQ群载文，Alt+"
       "E从剪贴板载文，F6从本地文件载文，Ctrl+Q退出。";
 
-  win->article_name = "欢迎语";
+  g_free(win->article_name);
+  win->article_name = g_strdup("欢迎语");
   glong welcome_length = g_utf8_strlen(welcome, -1);
   win->stats.text_length = welcome_length;
-  gtk_label_set_text(GTK_LABEL(win->words),
-                     g_strdup_printf("共%ld字", welcome_length));
+  label_set_printf(GTK_LABEL(win->words), "共%ld字", welcome_length);
 
   gtk_text_buffer_set_text(buffer, welcome, -1);
   gtk_window_set_focus(GTK_WINDOW(win), GTK_WIDGET(win->follow));
@@ -273,18 +308,15 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
     // 转换为分钟并计算每分钟字数
     overall_typing_speed =
         (win->stats.total_char_count * 60000.0) / elapsed_time_ms;
-    gtk_label_set_text(GTK_LABEL(win->speed),
-                       g_strdup_printf("%.2f", overall_typing_speed));
+    label_set_printf(GTK_LABEL(win->speed), "%.2f", overall_typing_speed);
   }
 
   // 显示击键与码长信息
   double stroke = (double)win->stats.stroke_count * 1000.0 / elapsed_time_ms;
-  gtk_label_set_text(GTK_LABEL(win->stroke), g_strdup_printf("%.2f", stroke));
-  g_strdup_printf("%d", win->stats.total_char_count);
+  label_set_printf(GTK_LABEL(win->stroke), "%.2f", stroke);
   double avg_code_len =
       (double)win->stats.stroke_count / win->stats.total_char_count;
-  gtk_label_set_text(GTK_LABEL(win->code_len),
-                     g_strdup_printf("%.2f", avg_code_len));
+  label_set_printf(GTK_LABEL(win->code_len), "%.2f", avg_code_len);
 
   // 显示用时
   guint seconds = elapsed_time_ms / 1000;
@@ -292,16 +324,10 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
   seconds = seconds % 60;
   guint milliseconds = elapsed_time_ms % 1000;
 
-  gtk_label_set_text(
-      GTK_LABEL(win->timer),
-      g_strdup_printf("%02u:%02u.%03u", minutes, seconds, milliseconds));
+  label_set_printf(GTK_LABEL(win->timer), "%02u:%02u.%03u", minutes, seconds,
+                   milliseconds);
 
-  char *grade = nullptr;
-  grade = g_malloc(1024);
-
-  // 打印成绩
-  sprintf(
-      grade,
+  char *grade = g_strdup_printf(
       "%s 速度%.2f 击键%.2f 码长%.2f 字数%d 错字%d 时间%02u:%02u.%03u 回改%d "
       "退格%d 回车%d 键数%d 打词%.2f%% 输入法:Rime·98五笔 NFLinux跟打器\n",
       win->article_name, overall_typing_speed, stroke, avg_code_len,

@@ -80,7 +80,6 @@ static QQGroupItem **list_qq_group_window_linux(TypewriterWindow *win,
     g_print("不存在QQ群窗口\n");
     return items;
   }
-  *win_count = window_count;
   for (int i = 0; i < window_count; i++) {
     char *window_name = NULL;
     get_window_title(windows[i], &window_name);
@@ -94,9 +93,11 @@ static QQGroupItem **list_qq_group_window_linux(TypewriterWindow *win,
     } else {
       item = qq_group_item_new(windows[i], window_name, FALSE);
     }
+    g_free(window_name);
 
-    items = g_realloc(items, (i + 1) * sizeof(QQGroupItem *));
-    items[i] = item;
+    // 用紧凑计数器存放，跳过无标题窗口不留空洞
+    items = g_realloc(items, (*win_count + 1) * sizeof(QQGroupItem *));
+    items[(*win_count)++] = item;
   }
   free(windows);
   cleanup();
@@ -151,18 +152,13 @@ void list_qq_group_window(TypewriterWindow *win) {
 #endif
   guint n_items =
       g_list_model_get_n_items(G_LIST_MODEL(win->qq_group_list_store));
-  if (items == nullptr) {
-    g_list_store_splice(win->qq_group_list_store, 1, n_items - 1, nullptr,
-                        win_count);
-    return;
-  }
-
   QQGroupItem *dive_item =
       g_list_model_get_item(G_LIST_MODEL(win->qq_group_list_store), 0);
-  if (has_selected) {
-    dive_item->is_selected = FALSE;
-  } else {
-    dive_item->is_selected = TRUE;
+
+  // splice会销毁旧的群窗口项，selected_group不能继续指向它们：
+  // 未选中同名窗口（或未获取到窗口）时回到潜水项，否则splice后重指向新项
+  dive_item->is_selected = !has_selected;
+  if (!has_selected) {
     win->selected_group = dive_item;
     // 更新按钮文本
     GtkWidget *button_content =
@@ -176,8 +172,19 @@ void list_qq_group_window(TypewriterWindow *win) {
   }
 
   g_list_store_splice(win->qq_group_list_store, 1, n_items - 1,
-                      (gpointer *)items, win_count);
+                      (gpointer *)items, items != nullptr ? win_count : 0);
+
+  if (has_selected && items != nullptr) {
+    for (guint i = 0; i < win_count; i++) {
+      if (items[i]->is_selected) {
+        win->selected_group = items[i];
+        break;
+      }
+    }
+  }
+
   // 释放资源
+  g_object_unref(dive_item);
   g_free(items);
 }
 
