@@ -68,37 +68,57 @@ void get_windows_recursive(Window w, Window **windows, int *count,
       // 获取窗口类
       char *win_class_name = NULL;
       XClassHint class_hint;
+      XWindowAttributes attrs;
       if (XGetClassHint(x11display, children[i], &class_hint)) {
         win_class_name = class_hint.res_name;
       }
       if (win_class_name && strcmp(win_class_name, class_name) != 0) {
+        XFree(class_hint.res_name);
+        XFree(class_hint.res_class);
         continue;
       }
       // 检查窗口是否映射（可见）
-      XWindowAttributes attrs;
-      if (XGetWindowAttributes(x11display, children[i], &attrs)) {
+      if (win_class_name &&
+          XGetWindowAttributes(x11display, children[i], &attrs)) {
         if (attrs.map_state == IsViewable || is_window_minimized(children[i])) {
-          if (win_class_name) {
-            // 重新分配内存并添加窗口
-            *windows = realloc(*windows, (*count + 1) * sizeof(Window));
-            (*windows)[*count] = children[i];
-            (*count)++;
-          }
+          // 重新分配内存并添加窗口
+          *windows = realloc(*windows, (*count + 1) * sizeof(Window));
+          (*windows)[*count] = children[i];
+          (*count)++;
         }
       }
       // 递归获取子窗口
       get_windows_recursive(children[i], windows, count, class_name);
+      // XGetClassHint返回的res_name/res_class均由X11分配，所有路径都要释放
+      if (win_class_name) {
+        XFree(class_hint.res_name);
+        XFree(class_hint.res_class);
+      }
     }
     if (children) XFree(children);
   }
 }
 
+// 枚举期间窗口可能被销毁，XGet*调用会触发BadWindow并导致默认处理器退出进程；
+// 枚举路径统一忽略X错误（各调用失败时返回0，调用方已按无属性处理）
+static int ignore_x_errors(Display *display, XErrorEvent *event) {
+  (void)display;
+  (void)event;
+  return 0;
+}
+
 // 获取所有打开的窗口
 Window *get_all_windows(int *window_count, const char *class_name) {
   Window *windows = NULL;
+  XErrorHandler old_handler;
+
   *window_count = 0;
 
+  XSync(x11display, False);
+  old_handler = XSetErrorHandler(ignore_x_errors);
   get_windows_recursive(root_window, &windows, window_count, class_name);
+  XSync(x11display, False);
+  XSetErrorHandler(old_handler);
   return windows;
 }
 
@@ -111,35 +131,15 @@ void get_window_title(Window win, char **title) {
       char **list = NULL;
       int count = 0;
       if (XmbTextPropertyToTextList(x11display, &text_prop, &list, &count) ==
-              Success &&
-          count > 0) {
-        *title = strdup(list[0]);
+          Success) {
+        if (count > 0) {
+          *title = strdup(list[0]);
+        }
         XFreeStringList(list);
       }
     }
+    XFree(text_prop.value);
   }
-}
-
-// 打印窗口信息
-void print_window_info(Window win) {
-  XTextProperty text_prop;
-  char *window_name = NULL;
-
-  // 获取窗口标题
-  get_window_title(win, &window_name);
-
-  // 获取窗口类
-  char *class_name = NULL;
-  XClassHint class_hint;
-  if (XGetClassHint(x11display, win, &class_hint)) {
-    class_name = class_hint.res_name;
-  }
-
-  printf("窗口ID: 0x%lx, 标题: %s, 类: %s\n", win,
-         window_name ? window_name : "未知", class_name ? class_name : "未知");
-
-  if (text_prop.value) XFree(text_prop.value);
-  if (class_name) XFree(class_hint.res_name);
 }
 
 // 激活窗口（使其获得焦点）
@@ -158,27 +158,14 @@ Window find_window_by_title(const char *title_pattern, char *class_name) {
   Window found_window = None;
 
   for (int i = 0; i < window_count; i++) {
-    XTextProperty text_prop;
-    if (XGetWMName(x11display, windows[i], &text_prop) && text_prop.value) {
-      char *window_title = NULL;
-      if (text_prop.encoding == XA_STRING) {
-        window_title = (char *)text_prop.value;
-      } else {
-        char **list = NULL;
-        int count = 0;
-        if (XmbTextPropertyToTextList(x11display, &text_prop, &list, &count) ==
-                Success &&
-            count > 0) {
-          window_title = list[0];
-        }
-      }
-
-      if (window_title && strstr(window_title, title_pattern)) {
-        found_window = windows[i];
-        if (text_prop.value) XFree(text_prop.value);
-        break;
-      }
-      if (text_prop.value) XFree(text_prop.value);
+    char *window_title = NULL;
+    get_window_title(windows[i], &window_title);
+    if (window_title != NULL && strstr(window_title, title_pattern) != NULL) {
+      found_window = windows[i];
+    }
+    free(window_title);
+    if (found_window != None) {
+      break;
     }
   }
 

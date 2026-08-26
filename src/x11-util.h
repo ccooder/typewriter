@@ -25,8 +25,6 @@ void cleanup();
 Window *get_all_windows(int *window_count, const char *class_name);
 // 获取窗口标题
 void get_window_title(Window win, char **title);
-// 打印窗口信息
-void print_window_info(Window win);
 // 激活窗口（使其获得焦点）
 int activate_window(Window win);
 // 根据窗口标题查找窗口
