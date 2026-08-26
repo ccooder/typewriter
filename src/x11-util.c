@@ -66,35 +66,34 @@ void get_windows_recursive(Window w, Window **windows, int *count,
 
   if (XQueryTree(x11display, w, &w, &parent, &children, &nchildren)) {
     for (unsigned int i = 0; i < nchildren; i++) {
-      // 获取窗口类
-      char *win_class_name = NULL;
+      // 按惯例res_class是程序类名、res_name是实例名，不同Toolkit命名不一致
+      // （如GTK两者同小写、QT常为大写类名），任一字段忽略大小写匹配即算
       XClassHint class_hint;
       XWindowAttributes attrs;
       if (XGetClassHint(x11display, children[i], &class_hint)) {
-        win_class_name = class_hint.res_name;
-      }
-      if (win_class_name && strcmp(win_class_name, class_name) != 0) {
-        XFree(class_hint.res_name);
-        XFree(class_hint.res_class);
-        continue;
-      }
-      // 检查窗口是否映射（可见）
-      if (win_class_name &&
-          XGetWindowAttributes(x11display, children[i], &attrs)) {
-        if (attrs.map_state == IsViewable || is_window_minimized(children[i])) {
+        gboolean matched =
+            g_ascii_strcasecmp(
+                class_hint.res_class ? class_hint.res_class : "",
+                class_name) == 0 ||
+            g_ascii_strcasecmp(
+                class_hint.res_name ? class_hint.res_name : "",
+                class_name) == 0;
+        // 检查窗口是否映射（可见）
+        if (matched &&
+            XGetWindowAttributes(x11display, children[i], &attrs) &&
+            (attrs.map_state == IsViewable ||
+             is_window_minimized(children[i]))) {
           // 重新分配内存并添加窗口
           *windows = realloc(*windows, (*count + 1) * sizeof(Window));
           (*windows)[*count] = children[i];
           (*count)++;
         }
-      }
-      // 递归获取子窗口
-      get_windows_recursive(children[i], windows, count, class_name);
-      // XGetClassHint返回的res_name/res_class均由X11分配，所有路径都要释放
-      if (win_class_name) {
+        // XGetClassHint返回的res_name/res_class均由X11分配，所有路径都要释放
         XFree(class_hint.res_name);
         XFree(class_hint.res_class);
       }
+      // 递归获取子窗口
+      get_windows_recursive(children[i], windows, count, class_name);
     }
     if (children) XFree(children);
   }
