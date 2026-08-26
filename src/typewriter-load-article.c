@@ -172,7 +172,7 @@ static int load_article_from_qq_group_macos(TypewriterWindow *win) {
   // Your AppleScript to be executed, returning a string
 
   // Construct the osascript command to execute the AppleScript and redirect its output
-  snprintf(command, sizeof(command), "osascript list_qq_win.scpt");
+  snprintf(command, sizeof(command), "osascript activate_qq_win_do.scpt \"%s\"", win->selected_group->name);
 
   // Execute the command and capture its output
   fp = popen(command, "r");
@@ -189,6 +189,10 @@ static int load_article_from_qq_group_macos(TypewriterWindow *win) {
 
   // Close the pipe
   pclose(fp);
+
+  if (g_strcmp0(buffer, "success") != 0) {
+    g_print("激活QQ窗口失败\n");
+  }
 
   return 0;
 }

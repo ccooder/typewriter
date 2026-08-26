@@ -8,7 +8,7 @@
 #include <stdarg.h>
 #include <string.h>
 
-void label_set_printf(GtkLabel *label, const char *format, ...) {
+void label_set_printf(GtkLabel *label, const gchar *format, ...) {
   va_list args;
   va_start(args, format);
   gchar *text = g_strdup_vprintf(format, args);

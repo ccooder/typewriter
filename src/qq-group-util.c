@@ -45,6 +45,9 @@ static QQGroupItem **list_qq_group_window_macos(TypewriterWindow *win,
   }
   char **lines = g_strsplit(buffer, ", ", -1);
   for (int i = 0; lines[i] != NULL; i++) {
+    if (g_strcmp0(lines[i], "缩略图") == 0) {
+      continue;
+    }
     g_print("%s\n", lines[i]);
     (*win_count)++;
     QQGroupItem *item = nullptr;

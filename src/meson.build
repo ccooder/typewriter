@@ -31,6 +31,12 @@ copy = fs.copyfile(
     install_dir : join_paths(meson.current_build_dir())
 )
 
+copy = fs.copyfile(
+    join_paths(src_dir, 'activate_qq_win_do.scpt'),
+    install : true,
+    install_dir : join_paths(meson.current_build_dir())
+)
+
 subdir('theme')
 
 deps = declare_dependency(

@@ -10,7 +10,9 @@
 
 gboolean update_stat_ui(gpointer user_data);
 // 格式化并设置label文本，内部释放格式化字符串
-void label_set_printf(GtkLabel *label, const char *format, ...);
+// 格式属性：既让调用点获得格式检查，也豁免对g_strdup_vprintf透传的-Wformat-nonliteral
+void label_set_printf(GtkLabel *label, const char *format, ...)
+    G_GNUC_PRINTF(2, 3);
 
 // 结束时的成绩指标（grade为成绩单文本，用完g_free）
 typedef struct {
