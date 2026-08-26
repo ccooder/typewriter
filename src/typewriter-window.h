@@ -31,7 +31,7 @@ G_BEGIN_DECLS
 #define TYPEWRITER_TYPE_WINDOW (typewriter_window_get_type())
 
 // UI 刷新间隔 单位毫秒
-#define REFRESH_INTERVAL 7
+#define REFRESH_INTERVAL 17
 
 G_DECLARE_FINAL_TYPE(TypewriterWindow, typewriter_window, TYPEWRITER, WINDOW,
                      GtkApplicationWindow)
@@ -124,6 +124,9 @@ struct _TypewriterWindow {
   // preedit buffer
   gchar *preedit_buffer;
   char *article_name;
+  // 对照区上色tag（init时创建一次，归buffer的tag table所有）
+  GtkTextTag *correct_tag;
+  GtkTextTag *incorrect_tag;
 
   guint update_timer_id;
   // 实时击键速度

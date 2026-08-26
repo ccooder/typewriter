@@ -29,11 +29,41 @@ static gboolean handle_special_keys(TypewriterWindow *self, guint keyval) {
 }
 
 gboolean is_special_key(guint keyval) {
-  return keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter ||
-         keyval == GDK_KEY_Escape || keyval == GDK_KEY_Shift_L ||
-         keyval == GDK_KEY_Control_L || keyval == GDK_KEY_Alt_L ||
-         keyval == GDK_KEY_Super_L || keyval == GDK_KEY_Caps_Lock ||
-         keyval == GDK_KEY_Tab;
+  // 修饰键keysym连续区段Shift_L(0xffe1)~Hyper_R(0xffee)，左右两侧统一判定
+  if ((keyval >= GDK_KEY_Shift_L && keyval <= GDK_KEY_Hyper_R) ||
+      keyval == GDK_KEY_ISO_Level3_Shift || keyval == GDK_KEY_ISO_Level5_Shift) {
+    return TRUE;
+  }
+  switch (keyval) {
+    case GDK_KEY_Return:
+    case GDK_KEY_KP_Enter:
+    case GDK_KEY_Escape:
+    case GDK_KEY_Tab:
+    case GDK_KEY_ISO_Left_Tab:
+    case GDK_KEY_Num_Lock:
+    case GDK_KEY_Scroll_Lock:
+    // 导航键不产生文本，不计击键（退格/删除仍计，属编辑动作）
+    case GDK_KEY_Left:
+    case GDK_KEY_Right:
+    case GDK_KEY_Up:
+    case GDK_KEY_Down:
+    case GDK_KEY_Home:
+    case GDK_KEY_End:
+    case GDK_KEY_Page_Up:
+    case GDK_KEY_Page_Down:
+    case GDK_KEY_KP_Left:
+    case GDK_KEY_KP_Right:
+    case GDK_KEY_KP_Up:
+    case GDK_KEY_KP_Down:
+    case GDK_KEY_KP_Home:
+    case GDK_KEY_KP_End:
+    case GDK_KEY_KP_Page_Up:
+    case GDK_KEY_KP_Page_Down:
+    case GDK_KEY_KP_Begin:
+      return TRUE;
+    default:
+      return keyval >= GDK_KEY_F1 && keyval <= GDK_KEY_F12;
+  }
 }
 
 static void update_typing_state(TypewriterWindow *self, guint keyval) {
@@ -134,12 +164,13 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   gchar *control_text =
       gtk_text_buffer_get_text(control_buffer, &start, &end, FALSE);
 
-  gtk_text_buffer_remove_all_tags(control_buffer, &start, &end);
+  // 只移除并重打自己的两个tag（tag本身在init里创建一次）
+  gtk_text_buffer_remove_tag(control_buffer, self->correct_tag, &start, &end);
+  gtk_text_buffer_remove_tag(control_buffer, self->incorrect_tag, &start, &end);
 
-  GtkTextTag *correct_tag = gtk_text_buffer_create_tag(
-      control_buffer, NULL, "background", "#108144", NULL);
-  GtkTextTag *incorrect_tag = gtk_text_buffer_create_tag(
-      control_buffer, NULL, "background", "red", "foreground", "white", NULL);
+  // ponytail: 每次击键全量重上色是O(n)，千字长文×千次击键仍可承受；
+  // 真不够再改增量上色
+
 
   GtkTextIter char_iter;
   gtk_text_buffer_get_start_iter(follow_buffer, &char_iter);
@@ -165,11 +196,11 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
     gtk_text_buffer_get_iter_at_offset(control_buffer, &control_end_iter,
                                        gtk_text_iter_get_offset(&char_iter));
     if (typed_unichar == ref_unichar) {
-      gtk_text_buffer_apply_tag(control_buffer, correct_tag,
+      gtk_text_buffer_apply_tag(control_buffer, self->correct_tag,
                                 &control_start_iter, &control_end_iter);
       ccc++;
     } else {
-      gtk_text_buffer_apply_tag(control_buffer, incorrect_tag,
+      gtk_text_buffer_apply_tag(control_buffer, self->incorrect_tag,
                                 &control_start_iter, &control_end_iter);
     }
 
@@ -209,7 +240,8 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
                                   progress);
   }
 
-  if (control_text[i] == '\0') {
+  // 未开打（start_time为0，如空文章）不得结束，否则空文会立即结束并发出垃圾成绩
+  if (control_text[i] == '\0' && self->stats.start_time > 0) {
     self->state = TYPEWRITER_STATE_ENDED;
     g_signal_emit_by_name(self, "TYPE_ENDED");
   }

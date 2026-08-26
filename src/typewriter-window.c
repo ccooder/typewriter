@@ -142,6 +142,15 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->key_time_queue = g_queue_new();
   self->qq_group_list_store = g_list_store_new(QQ_GROUP_TYPE_ITEM);
 
+  // 对照区上色tag只创建一次，复用避免tag table无限膨胀
+  GtkTextBuffer *control_buffer =
+      gtk_text_view_get_buffer(GTK_TEXT_VIEW(self->control));
+  self->correct_tag = gtk_text_buffer_create_tag(
+      control_buffer, "correct-tag", "background", "#108144", NULL);
+  self->incorrect_tag = gtk_text_buffer_create_tag(
+      control_buffer, "incorrect-tag", "background", "red", "foreground",
+      "white", NULL);
+
   // Create the factory and connect the setup/bind signals
   GtkListItemFactory *factory = gtk_signal_list_item_factory_new();
   g_signal_connect(factory, "setup", G_CALLBACK(setup_cb), NULL);

@@ -52,9 +52,9 @@ static void typewriter_application_activate(GApplication *app) {
 
   if (win == NULL) {
     win = typewriter_window_new(TYPEWRITER_APPLICATION(app));
+    // 仅首次创建窗口时载入欢迎语；二次启动不得重置正在跟打的轮次
+    typewriter_window_open(win);
   }
-
-  typewriter_window_open(win);
 
   gtk_window_present(GTK_WINDOW(win));
 }
