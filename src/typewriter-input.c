@@ -17,8 +17,9 @@ static gboolean handle_special_keys(TypewriterWindow *self, guint keyval) {
   // 处理特殊按键逻辑
   if ((self->preedit_buffer == NULL || strlen(self->preedit_buffer) <= 0) &&
       (keyval == GDK_KEY_Return || keyval == GDK_KEY_KP_Enter)) {
-    self->stats.enter_count++;
+    // 只有跟打中的回车（用于暂停）才计入成绩
     if (self->state == TYPEWRITER_STATE_TYPING) {
+      self->stats.enter_count++;
       typewriter_pause(self);
     }
     return TRUE;
@@ -200,10 +201,13 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   self->stats.correct_char_count = ccc;
   self->stats.total_char_count = tcc;
 
-  // 更新进度条
-  double progress =
-      (double)self->stats.total_char_count / self->stats.text_length;
-  gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(self->progressbar), progress);
+  // 更新进度条（文章为空时不更新，避免除零得到nan）
+  if (self->stats.text_length > 0) {
+    double progress =
+        (double)self->stats.total_char_count / self->stats.text_length;
+    gtk_progress_bar_set_fraction(GTK_PROGRESS_BAR(self->progressbar),
+                                  progress);
+  }
 
   if (control_text[i] == '\0') {
     self->state = TYPEWRITER_STATE_ENDED;
