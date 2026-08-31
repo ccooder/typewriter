@@ -33,6 +33,15 @@ G_BEGIN_DECLS
 // UI 刷新间隔 单位毫秒
 #define REFRESH_INTERVAL 17
 
+// 慢字词阈值：距上次上屏超过该时长（微秒，打字钟已扣暂停）即计入
+#define SLOW_THRESHOLD_US G_USEC_PER_SEC
+
+// 慢字词记录：一次上屏超过阈值即记一条，text为对照区对应切片（多字=词）
+typedef struct {
+  gchar *text;
+  double seconds;
+} TypewriterSlowItem;
+
 G_DECLARE_FINAL_TYPE(TypewriterWindow, typewriter_window, TYPEWRITER, WINDOW,
                      GtkApplicationWindow)
 
@@ -117,6 +126,12 @@ struct _TypewriterWindow {
 
   // 中间信息区
   GtkWidget *mid_info;
+  // 状态/错字/正确率（左）
+  GtkWidget *state_label;
+  // 峰值击键/节奏稳定性（中）
+  GtkWidget *live_metrics;
+  // 进度/剩余/预计还需（右）
+  GtkWidget *record_label;
 
   // 进度条
   GtkWidget *progressbar;
@@ -138,6 +153,19 @@ struct _TypewriterWindow {
   guint max_queue_size;
   // 跟打状态
   TypewriterState state;
+  // 慢字词记录链表（TypewriterSlowItem，结束时点击指标可看详情）
+  GList *slow_items;
+  // 上次上屏时的打字钟（微秒，已扣暂停），0=尚无上屏
+  gint64 last_commit_elapsed;
+  // 中间信息条拖拽起始时的paned位置（拖拽调整上下框比例用）
+  gint mid_drag_start_pos;
+  // 拖拽起始时的指针表面Y与最新偏移：偏移必须用表面坐标算——控件自身
+  // 坐标会随set_position移动而漂移，用它算会形成"应用→坐标系平移→
+  // 偏移回退→位置回跳"的锯齿闪烁
+  double mid_drag_begin_y;
+  double mid_drag_last_off;
+  // 中间信息条拖拽上次应用时刻（微秒），节流防高频重排闪烁
+  gint64 mid_drag_last_us;
   // 跟打统计数据
   TypewriterStats stats;
   // QQ群选择器

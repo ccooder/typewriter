@@ -169,18 +169,25 @@
                 <child>
                   <object class="GtkBox" id="mid_info">
                     <property name="hexpand">True</property>
+                    <property name="spacing">8</property>
                     <property name="css-classes">mid_info</property>
                     <child>
-                      <object class="GtkLabel" id="state">
-                        <property name="label" translatable="yes">跟打状态</property>
+                      <object class="GtkLabel" id="state_label">
+                        <property name="label" translatable="yes">● 等待跟打</property>
                         <property name="hexpand">True</property>
                         <property name="xalign">0</property>
                         <property name="halign">start</property>
                       </object>
                     </child>
                     <child>
-                      <object class="GtkLabel" id="record">
-                        <property name="label" translatable="yes">打字记录:0%</property>
+                      <object class="GtkLabel" id="live_metrics">
+                        <property name="label" translatable="yes">峰值击键 -- 键/秒 · 节奏稳定性 --%</property>
+                        <property name="hexpand">True</property>
+                      </object>
+                    </child>
+                    <child>
+                      <object class="GtkLabel" id="record_label">
+                        <property name="label" translatable="yes">进度 --</property>
                         <property name="hexpand">True</property>
                         <property name="halign">end</property>
                       </object>

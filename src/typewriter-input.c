@@ -266,6 +266,25 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
     self->stats.type_char_count++;
   }
 
+  // 慢字词：距上次上屏超过阈值（打字钟，已扣暂停，删除重打的时间也计入
+  // 该字的耗时）即记一条，文本取对照区对应切片
+  if (self->stats.start_time > 0 && compared > 0) {
+    gint64 elapsed_us = g_get_monotonic_time() - self->stats.start_time -
+                        (gint64)self->stats.pause_duration;
+    if (elapsed_us - self->last_commit_elapsed > SLOW_THRESHOLD_US) {
+      GtkTextIter s_it, e_it;
+      gtk_text_buffer_get_start_iter(control_buffer, &s_it);
+      gtk_text_iter_forward_chars(&s_it, old_total);
+      gtk_text_buffer_get_start_iter(control_buffer, &e_it);
+      gtk_text_iter_forward_chars(&e_it, self->stats.total_char_count);
+      TypewriterSlowItem *item = g_new(TypewriterSlowItem, 1);
+      item->text = gtk_text_buffer_get_slice(control_buffer, &s_it, &e_it, TRUE);
+      item->seconds = (elapsed_us - self->last_commit_elapsed) / 1000000.0;
+      self->slow_items = g_list_append(self->slow_items, item);
+    }
+    self->last_commit_elapsed = elapsed_us;
+  }
+
   // 更新进度条（文章为空时不更新，避免除零得到nan）
   if (self->stats.text_length > 0) {
     double progress =

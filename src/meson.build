@@ -14,6 +14,7 @@ typewriter_deps = [
     dependency('gtk4'),
     dependency('x11'),
     dependency('xtst'),
+    cc.find_library('m', required: false),
 ]
 
 typewriter_sources += gnome.compile_resources('typewriter-resources',

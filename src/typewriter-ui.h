@@ -9,6 +9,13 @@
 #include "typewriter-window.h"
 
 gboolean update_stat_ui(gpointer user_data);
+// 中间信息区渲染：左=状态/回改/退格，中=峰值击键/节奏稳定性，右=慢字词计数。
+// 17ms刷新与状态切换（暂停/结束/重打/载文）时调用
+void update_mid_info(TypewriterWindow *self);
+// 纯函数：由最近击键时间队列算峰值击键（键/秒，最短间隔折算）与
+// 节奏稳定性（%，1-间隔变异系数）。队列不足两个时间戳时两者置0
+void typewriter_compute_peak_stability(GQueue *key_times, double *peak,
+                                       double *stability);
 // 格式化并设置label文本，内部释放格式化字符串
 // 格式属性：既让调用点获得格式检查，也豁免对g_strdup_vprintf透传的-Wformat-nonliteral
 void label_set_printf(GtkLabel *label, const char *format, ...)

@@ -20,6 +20,8 @@
 
 #include "typewriter-window.h"
 
+#include <math.h>
+
 #include "config.h"
 #include "qq-group-item.h"
 #include "qq-group-util.h"
@@ -96,12 +98,22 @@ static void typewriter_window_dispose(GObject *object) {
   G_OBJECT_CLASS(typewriter_window_parent_class)->dispose(object);
 }
 
+static void clear_slow_items(TypewriterWindow *self) {
+  while (self->slow_items != NULL) {
+    TypewriterSlowItem *item = self->slow_items->data;
+    g_free(item->text);
+    g_free(item);
+    self->slow_items = g_list_delete_link(self->slow_items, self->slow_items);
+  }
+}
+
 static void typewriter_window_finalize(GObject *object) {
   TypewriterWindow *self = TYPEWRITER_WINDOW(object);
 
   g_clear_pointer(&self->preedit_buffer, g_free);
   g_clear_pointer(&self->article_name, g_free);
   g_clear_pointer(&self->key_time_queue, g_queue_free);
+  clear_slow_items(self);
 
   G_OBJECT_CLASS(typewriter_window_parent_class)->finalize(object);
 }
@@ -139,10 +151,116 @@ static void typewriter_window_class_init(TypewriterWindowClass *klass) {
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
                                        mid_info);
   gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       state_label);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       live_metrics);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
+                                       record_label);
+  gtk_widget_class_bind_template_child(widget_class, TypewriterWindow,
                                        progressbar);
 
   g_signal_new("TYPE_ENDED", G_TYPE_FROM_CLASS(klass), G_SIGNAL_RUN_FIRST, 0,
                NULL, NULL, NULL, G_TYPE_NONE, 0);
+}
+
+// 当前指针的表面(窗口)坐标Y：窗口在拖拽中不动，作稳定参照系
+static double mid_drag_cur_y(GtkGesture *gesture) {
+  GdkEventSequence *seq =
+      gtk_gesture_single_get_current_sequence(GTK_GESTURE_SINGLE(gesture));
+  GdkEvent *event = gtk_gesture_get_last_event(gesture, seq);
+  double x, y;
+  gdk_event_get_position(event, &x, &y);
+  (void)x;
+  return y;
+}
+
+// 中间信息条拖拽把手：记录按下时的paned位置与指针表面Y。
+// 偏移必须用表面坐标算——控件自身坐标会随set_position移动而漂移，
+// 用GtkGestureDrag给的控件局部offset会形成"应用→坐标系平移→偏移回退
+// →位置回跳"的锯齿闪烁
+static void on_mid_drag_begin(GtkGestureDrag *gesture, double start_x,
+                              double start_y, gpointer user_data) {
+  (void)start_x;
+  (void)start_y;
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  self->mid_drag_start_pos = gtk_paned_get_position(GTK_PANED(self->main_paned));
+  self->mid_drag_begin_y = mid_drag_cur_y(GTK_GESTURE(gesture));
+  self->mid_drag_last_off = 0.0;
+  self->mid_drag_last_us = 0;
+}
+
+static void mid_drag_apply(TypewriterWindow *self, double offset_y) {
+  gtk_paned_set_position(GTK_PANED(self->main_paned),
+                         self->mid_drag_start_pos + (int)offset_y);
+}
+
+// 拖动超过3px抖动容忍才认领并调整比例，避免误吞慢字词指标等点击；
+// 认领后松手不会再触发label上的点击手势。60ms节流：真实鼠标高频motion
+// 会让每次重排都全量重绘两个文本区（松手补齐最终位置）
+static void on_mid_drag_update(GtkGestureDrag *gesture, double offset_x,
+                               double offset_y, gpointer user_data) {
+  (void)offset_x;
+  (void)offset_y;
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  double off = mid_drag_cur_y(GTK_GESTURE(gesture)) - self->mid_drag_begin_y;
+  self->mid_drag_last_off = off;
+  if (fabs(off) < 3) {
+    return;
+  }
+  gtk_gesture_set_state(GTK_GESTURE(gesture), GTK_EVENT_SEQUENCE_CLAIMED);
+  gint64 now = g_get_monotonic_time();
+  if (now - self->mid_drag_last_us >= 60000) {
+    self->mid_drag_last_us = now;
+    mid_drag_apply(self, off);
+  }
+}
+
+// 松手时无条件应用最终偏移（节流期间丢弃的中间值不影响终值）
+static void on_mid_drag_end(GtkGestureDrag *gesture, double offset_x,
+                            double offset_y, gpointer user_data) {
+  (void)gesture;
+  (void)offset_x;
+  (void)offset_y;
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  mid_drag_apply(self, self->mid_drag_last_off);
+}
+
+// 慢字词详情弹层关闭时解除挂靠并释放（引用已交由父部件持有）
+static void on_slow_popover_closed(GtkPopover *pop, gpointer user_data) {
+  (void)user_data;
+  gtk_widget_unparent(GTK_WIDGET(pop));
+}
+
+// 结束后点击慢字词指标弹出详情：逐条显示慢的字词与耗时
+static void on_slow_detail_clicked(GtkGestureClick *gesture, int n_press,
+                                   double x, double y, gpointer user_data) {
+  (void)gesture;
+  (void)n_press;
+  (void)x;
+  (void)y;
+  TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
+  if (self->state != TYPEWRITER_STATE_ENDED || self->slow_items == NULL) {
+    return;
+  }
+  GString *detail = g_string_new("");
+  for (GList *l = self->slow_items; l != NULL; l = l->next) {
+    TypewriterSlowItem *item = l->data;
+    g_string_append_printf(detail, "「%s」  %.1f 秒\n", item->text,
+                           item->seconds);
+  }
+  GtkWidget *pop = gtk_popover_new();
+  GtkWidget *sw = gtk_scrolled_window_new();
+  gtk_widget_set_size_request(sw, 280, 200);
+  GtkWidget *label = gtk_label_new(detail->str);
+  gtk_label_set_wrap(GTK_LABEL(label), TRUE);
+  gtk_label_set_xalign(GTK_LABEL(label), 0);
+  gtk_scrolled_window_set_child(GTK_SCROLLED_WINDOW(sw), label);
+  gtk_popover_set_child(GTK_POPOVER(pop), sw);
+  g_signal_connect(pop, "closed", G_CALLBACK(on_slow_popover_closed), NULL);
+  // 部件构造为浮动引用，set_parent沉掉并接管；closed时unparent即销毁
+  gtk_widget_set_parent(pop, self->record_label);
+  gtk_popover_popup(GTK_POPOVER(pop));
+  g_string_free(detail, TRUE);
 }
 
 static void typewriter_window_init(TypewriterWindow *self) {
@@ -157,15 +275,23 @@ static void typewriter_window_init(TypewriterWindow *self) {
 
   gtk_paned_set_start_child(GTK_PANED(self->main_paned), self->control_scroll);
   gtk_paned_set_end_child(GTK_PANED(self->main_paned), self->follow_box);
+  // 宽把手：细把手时GTK在分隔线四周外扩6px隐形拖拽热区，且paned的拖拽手势在
+  // capture阶段认领事件——紧邻分隔线下方的中间信息条上半部分点击会被吃掉。
+  // 宽把手的热区=可视分隔线本身，不再外扩；细线外观由style.css还原
+  // gtk_paned_set_wide_handle(GTK_PANED(self->main_paned), TRUE);
   // 设置最小窗口大小
   gtk_widget_set_size_request(GTK_WIDGET(self->control_scroll), -1, 100);
   gtk_widget_set_size_request(GTK_WIDGET(self->follow_box), -1, 100);
 
-  // GdkCursor *move_cursor = gdk_cursor_new_from_name("row-resize", NULL);
-  //
-  // // Set the cursor on the button
-  // gtk_widget_set_cursor(self->mid_info, move_cursor);
-  // g_object_unref(move_cursor);
+  // 中间信息条整体作为拖拽把手：上下拖动调整对照区/跟打区比例；
+  // 静止点击不受影响（真实拖动才认领，见on_mid_drag_update）
+  GtkGesture *mid_drag = gtk_gesture_drag_new();
+  g_signal_connect(mid_drag, "drag-begin", G_CALLBACK(on_mid_drag_begin), self);
+  g_signal_connect(mid_drag, "drag-update", G_CALLBACK(on_mid_drag_update),
+                   self);
+  g_signal_connect(mid_drag, "drag-end", G_CALLBACK(on_mid_drag_end), self);
+  gtk_widget_add_controller(self->mid_info, GTK_EVENT_CONTROLLER(mid_drag));
+  gtk_widget_set_cursor_from_name(self->mid_info, "row-resize");
 
   // 窗口几何持久化：schema未安装（如buildDir直接运行）时静默关闭该功能。
   // GTK4已移除窗口定位API，位置由窗口管理器负责，此处只持久化尺寸与最大化
@@ -203,6 +329,8 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->stats.reform_count = 0;
   self->update_timer_id = 0;
   self->maximized_poll_id = 0;
+  self->slow_items = NULL;
+  self->last_commit_elapsed = 0;
   self->max_queue_size = 16;  // 存储最近16次击键时间
   self->key_time_queue = g_queue_new();
   self->qq_group_list_store = g_list_store_new(QQ_GROUP_TYPE_ITEM);
@@ -261,6 +389,12 @@ static void typewriter_window_init(TypewriterWindow *self) {
   g_signal_connect(focus_controller, "leave", G_CALLBACK(on_window_focus_leave),
                    self);
   g_signal_connect(self, "TYPE_ENDED", G_CALLBACK(on_type_ended), NULL);
+  // 慢字词指标点击弹详情（仅结束后生效）
+  GtkGesture *slow_click = gtk_gesture_click_new();
+  g_signal_connect(slow_click, "released", G_CALLBACK(on_slow_detail_clicked),
+                   self);
+  gtk_widget_add_controller(self->record_label,
+                            GTK_EVENT_CONTROLLER(slow_click));
   g_signal_connect(self->qq_group_dropdown, "clicked",
                    G_CALLBACK(on_qq_group_dropdown_clicked), self);
   g_signal_connect(self->qq_group_popover, "closed",
@@ -291,6 +425,7 @@ void typewriter_window_open(TypewriterWindow *win) {
   glong welcome_length = g_utf8_strlen(welcome, -1);
   win->stats.text_length = welcome_length;
   label_set_printf(GTK_LABEL(win->words), "共%ld字", welcome_length);
+  update_mid_info(win);
 
   gtk_text_buffer_set_text(buffer, welcome, -1);
   gtk_window_set_focus(GTK_WINDOW(win), GTK_WIDGET(win->follow));
@@ -418,6 +553,10 @@ static void on_type_ended(TypewriterWindow *win, gpointer user_data) {
   label_set_printf(GTK_LABEL(win->code_len), "%.2f", g.code_len);
   label_set_printf(GTK_LABEL(win->timer), "%02u:%02u.%03u", g.minutes,
                    g.seconds, g.milliseconds);
+  update_mid_info(win);
+  if (win->slow_items != NULL) {
+    gtk_widget_set_tooltip_text(win->record_label, "点击查看慢字词详情");
+  }
 
   send_to_qq_group(win, g.grade);
 
@@ -447,6 +586,7 @@ void typewriter_pause(TypewriterWindow *self) {
   }
   // 记录暂停开始时间
   self->stats.pause_start_time = g_get_monotonic_time();
+  update_mid_info(self);
 }
 
 void typewriter_window_retype(TypewriterWindow *win) {
@@ -458,8 +598,11 @@ void typewriter_window_retype(TypewriterWindow *win) {
     win->update_timer_id = 0;
   }
 
-  // 清空击键时间队列
+  // 清空击键时间队列与慢字词记录
   g_queue_clear(win->key_time_queue);
+  clear_slow_items(win);
+  win->last_commit_elapsed = 0;
+  gtk_widget_set_tooltip_text(win->record_label, NULL);
 
   // 重置计数器
   win->state = TYPEWRITER_STATE_RETYPE_READY;
@@ -483,6 +626,7 @@ void typewriter_window_retype(TypewriterWindow *win) {
   gtk_label_set_text(GTK_LABEL(win->speed), "0.0");
   gtk_label_set_text(GTK_LABEL(win->stroke), "0.0");
   gtk_label_set_text(GTK_LABEL(win->code_len), "0.0");
+  update_mid_info(win);
 
   // 清空跟打区
   GtkTextBuffer *follow_buffer =

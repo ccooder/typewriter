@@ -53,12 +53,51 @@
     padding: 0 3px;
 }
 
+/* 中间信息条：圆角半透明深色底，暗字/亮值由Pango标记着色 */
+.mid_info {
+    background-color: alpha(#101413, 0.45);
+    border-radius: 5px;
+    padding: 3px 10px;
+    margin-top: 2px;
+}
+
 .mid_info > label {
-    margin: 1px 0;
-    background-color: #267053;
-    color: #eeeeee;
-    font-size: 12px;
-    line-height: 1.1;
+    font-size: 13px;
+    font-variant-numeric: tabular-nums;
+}
+
+/* 状态徽配色，随状态机切换 */
+.st-wait {
+    color: #98a5a2;
+}
+
+.st-typing {
+    color: #5fe08f;
+}
+
+.st-pause {
+    color: #f0b95a;
+}
+
+.st-ended {
+    color: #6cb6f0;
+}
+
+/* 结束后慢字词指标可点击查看详情 */
+.slow-link {
+    text-decoration-line: underline;
+}
+
+/* 宽把手仅为取消细把手四周6px的隐形拖拽热区（会吃掉中间信息条上半的点击），
+   视觉压回细线：热区=可见线本身。嫌分隔线难抓可加大min-height */
+paned > separator.wide {
+    min-width: 1px;
+    min-height: 2px;
+    padding: 0;
+    margin: 0;
+    background-color: #2c3130;
+    background-image: none;
+    border-style: none;
 }
 
 .follow {
