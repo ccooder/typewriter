@@ -141,6 +141,17 @@ static void typewriter_application_retype_action(GSimpleAction *action,
 
 
 
+// 慢字词阈值：GSettings的int型key无法直接双向绑定到spinbutton的
+// double型value属性，编辑时手动写回并同步到当前窗口（立即生效）
+static void on_slow_threshold_changed(GtkSpinButton *spin, gpointer user_data) {
+  TypewriterWindow *win = TYPEWRITER_WINDOW(user_data);
+  int value = (int)gtk_spin_button_get_value(spin);
+  if (win->settings != NULL) {
+    g_settings_set_int(win->settings, "slow-threshold", value);
+  }
+  win->slow_threshold_s = value;
+}
+
 static void typewriter_application_preferences_action(GSimpleAction *action,
                                                        GVariant *parameter,
                                                        gpointer user_data) {
@@ -172,6 +183,17 @@ static void typewriter_application_preferences_action(GSimpleAction *action,
   gtk_box_append(GTK_BOX(ime_row), ime_label);
   gtk_box_append(GTK_BOX(ime_row), ime_entry);
 
+  GtkWidget *slow_label = gtk_label_new("Slow-word threshold (s):");
+  GtkWidget *slow_spin = gtk_spin_button_new_with_range(1, 30, 1);
+  gtk_spin_button_set_value(GTK_SPIN_BUTTON(slow_spin), 2);
+  gtk_widget_set_hexpand(slow_spin, TRUE);
+  gtk_widget_set_tooltip_text(
+      slow_spin, "距上次上屏超过该秒数即记为慢字词（打字钟已扣暂停）");
+
+  GtkWidget *slow_row = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 8);
+  gtk_box_append(GTK_BOX(slow_row), slow_label);
+  gtk_box_append(GTK_BOX(slow_row), slow_spin);
+
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 12);
   gtk_widget_set_margin_top(box, 12);
   gtk_widget_set_margin_bottom(box, 12);
@@ -179,18 +201,27 @@ static void typewriter_application_preferences_action(GSimpleAction *action,
   gtk_widget_set_margin_end(box, 16);
   gtk_box_append(GTK_BOX(box), check);
   gtk_box_append(GTK_BOX(box), ime_row);
+  gtk_box_append(GTK_BOX(box), slow_row);
 
   GtkWidget *dialog = gtk_window_new();
   gtk_window_set_title(GTK_WINDOW(dialog), "Preferences");
   gtk_window_set_transient_for(GTK_WINDOW(dialog), GTK_WINDOW(win));
   gtk_window_set_destroy_with_parent(GTK_WINDOW(dialog), TRUE);
-  gtk_window_set_default_size(GTK_WINDOW(dialog), 360, 100);
+  gtk_window_set_default_size(GTK_WINDOW(dialog), 360, 140);
   gtk_window_set_child(GTK_WINDOW(dialog), box);
-  if (win->settings != NULL) {
+  // 慢字词阈值：int型key无法直接双向绑到spinbutton的double属性，
+  // 打开时读一次，编辑时写回
+  GSettings *settings = win->settings;
+  if (settings != NULL) {
     g_settings_bind(win->settings, "ctrl-enter-send", check, "active",
                     G_SETTINGS_BIND_DEFAULT);
     g_settings_bind(win->settings, "ime-name", ime_entry, "text",
                     G_SETTINGS_BIND_DEFAULT);
+    gtk_spin_button_set_value(
+        GTK_SPIN_BUTTON(slow_spin),
+        g_settings_get_int(win->settings, "slow-threshold"));
+    g_signal_connect(slow_spin, "value-changed",
+                     G_CALLBACK(on_slow_threshold_changed), win);
   }
   gtk_window_present(GTK_WINDOW(dialog));
 }

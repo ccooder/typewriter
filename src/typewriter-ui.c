@@ -8,6 +8,12 @@
 #include <math.h>
 #include <stdarg.h>
 #include <string.h>
+#include <stdlib.h>
+
+static gint gint64_cmp(const void *a, const void *b) {
+  gint64 x = *(const gint64 *)a, y = *(const gint64 *)b;
+  return (x > y) - (x < y);
+}
 
 void label_set_printf(GtkLabel *label, const gchar *format, ...) {
   va_list args;
@@ -113,62 +119,129 @@ void typewriter_stats_self_test(void) {
   assert(strstr(g.grade, "速度0.00"));
   g_free(g.grade);
 
-  // 峰值击键与节奏稳定性：间隔100/100/90ms → 峰值=1/0.09s≈11.11键/秒，
-  // 变异系数≈0.0488 → 稳定性≈95.1%
+  // 峰值击键与节奏稳定性：时间戳0/90/190/290ms → 窗口平均间隔
+  // =(290-0)/3≈96.7ms → 峰值≈10.3键/秒；中位数=100ms，MAD=0 → 稳定性=100%
   GQueue *q = g_queue_new();
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)0));
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)90000));
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)190000));
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)290000));
+  double peak = 0.0, stability = 0.0;
+  typewriter_compute_peak(q, &peak);
+  typewriter_compute_stability(q, &stability);
+  assert(peak > 10.3 && peak < 10.4);
+  assert(stability == 100.0);
+
+  // 稳定打字中间夹一个1s停顿：停顿(>3x中位数)被剔除，稳定性不受影响
+  g_queue_clear(q);
   g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)0));
   g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)100000));
   g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)200000));
-  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)290000));
-  double peak = 0.0, stability = 0.0;
-  typewriter_compute_peak_stability(q, &peak, &stability);
-  assert(peak > 11.10 && peak < 11.12);
-  assert(stability > 94.0 && stability < 96.0);
-  // 不足两个时间戳（无间隔）时为0
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)1200000));  // 1s停顿
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)1300000));
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)1400000));
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)1500000));
+  typewriter_compute_peak(q, &peak);
+  typewriter_compute_stability(q, &stability);
+  // 剔除停顿后 5x100ms 间隔，中位数100、MAD=0 → 100%
+  assert(stability > 99.0);
+
+  // 不足两个时间戳（无间隔）时两者为0
   g_queue_clear(q);
-  typewriter_compute_peak_stability(q, &peak, &stability);
+  typewriter_compute_peak(q, &peak);
+  typewriter_compute_stability(q, &stability);
   assert(peak == 0.0 && stability == 0.0);
+
+  // 峰值按最近16键窗口计算：17个键里最早那个(0us)被挤出窗口，
+  // 窗口内最短间隔仍是100ms → 峰值=1/0.1s=10键/秒
+  g_queue_clear(q);
+  g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)0));
+  for (int i = 0; i < 16; i++) {
+    g_queue_push_tail(q, GSIZE_TO_POINTER((gsize)(i+1) * 100000));
+  }
+  typewriter_compute_peak(q, &peak);
+  assert(peak > 9.9 && peak < 10.1);  // 1/0.1s=10键/秒
   g_queue_free(q);
 }
 
-// 纯函数：峰值击键=最近击键间隔的最短者折算键/秒；节奏稳定性=1-间隔变异系数。
-// 队列不足两个时间戳（无间隔）时两者置0
-void typewriter_compute_peak_stability(GQueue *key_times, double *peak,
-                                       double *stability) {
+// 纯函数：峰值击键=最近16键平均间隔折算键/秒（1/平均间隔）。
+// 队列不足两个时间戳（无间隔）时置0
+void typewriter_compute_peak(GQueue *key_times, double *peak) {
   *peak = 0.0;
+  if (key_times == NULL || g_queue_get_length(key_times) < 2) {
+    return;
+  }
+  guint64 first_time = GPOINTER_TO_SIZE(key_times->head->data);
+  guint64 last_time = GPOINTER_TO_SIZE(key_times->tail->data);
+  guint count = g_queue_get_length(key_times);
+  if (last_time > first_time && count >= 2) {
+    // 平均间隔 = 总时差 / (键数-1)
+    *peak = (double)(count - 1) * 1000000.0 / (double)(last_time - first_time);
+  }
+}
+
+// 纯函数：节奏稳定性=1-MAD/中位数。用中位数绝对偏差（MAD）而非标准差：
+// 个别稍长的停顿对稳定性影响很小（MAD对离群不敏感），只有持续的不均匀
+// 才拉低稳定性；超过3倍中位数的间隔视为停顿直接剔除。队列存打字钟
+// （暂停段时钟冻结），暂停已排除在间隔计算外。
+// 队列不足两个时间戳（无间隔）时置0
+void typewriter_compute_stability(GQueue *key_times, double *stability) {
   *stability = 0.0;
   if (key_times == NULL || g_queue_get_length(key_times) < 2) {
     return;
   }
-  gint64 min_iv_us = G_MAXINT64;
-  double sum = 0.0, sum_sq = 0.0;
-  guint iv_count = 0;
+  GPtrArray *ivs = g_ptr_array_new();
   for (GList *l = key_times->head; l != NULL && l->next != NULL; l = l->next) {
     gint64 iv = (gint64)GPOINTER_TO_SIZE(l->next->data) -
                 (gint64)GPOINTER_TO_SIZE(l->data);
-    if (iv <= 0) {
-      continue;
+    if (iv > 0) {
+      g_ptr_array_add(ivs, GINT_TO_POINTER((gint)iv));
     }
-    if (iv < min_iv_us) {
-      min_iv_us = iv;
-    }
-    sum += (double)iv;
-    sum_sq += (double)iv * (double)iv;
-    iv_count++;
   }
-  if (iv_count == 0) {
+  guint n = ivs->len;
+  if (n >= 3) {
+    // 中位数
+    gint64 *arr = g_new(gint64, n);
+    for (guint i = 0; i < n; i++) {
+      arr[i] = GPOINTER_TO_SIZE(g_ptr_array_index(ivs, i));
+    }
+    qsort(arr, n, sizeof(gint64), gint64_cmp);
+    gint64 median = arr[n / 2];
+    gint64 cutoff = median * 3;
+    g_free(arr);
+
+    // 剔除停顿（>3x中位数）后，对剩余求各值偏离中位数的绝对值
+    gint64 *devs = g_new(gint64, n);
+    guint dev_count = 0;
+    for (guint i = 0; i < n; i++) {
+      gint64 iv = GPOINTER_TO_SIZE(g_ptr_array_index(ivs, i));
+      if (iv > cutoff) {
+        continue;
+      }
+      dev_count++;
+      gint64 d = iv - median;
+      devs[dev_count - 1] = d >= 0 ? d : -d;
+    }
+    // MAD = |devs|的中位数
+    qsort(devs, dev_count, sizeof(gint64), gint64_cmp);
+    gint64 mad = devs[dev_count / 2];
+    g_free(devs);
+    g_ptr_array_free(ivs, TRUE);
+    if (median > 0 && dev_count >= 2) {
+      double s = (1.0 - (double)mad / (double)median) * 100.0;
+      *stability = s > 0.0 ? s : 0.0;
+    }
     return;
   }
-  *peak = 1000000.0 / (double)min_iv_us;
-  if (iv_count >= 2) {
-    double mean = sum / iv_count;
-    double variance = sum_sq / iv_count - mean * mean;
-    if (variance < 0.0) {  // 浮点舍入可能出负
-      variance = 0.0;
-    }
-    double s = (1.0 - sqrt(variance) / mean) * 100.0;
+  if (n == 2) {
+    double a = GPOINTER_TO_SIZE(g_ptr_array_index(ivs, 0));
+    double b = GPOINTER_TO_SIZE(g_ptr_array_index(ivs, 1));
+    double s = (1.0 - fabs(a - b) / (a + b)) * 100.0;
     *stability = s > 0.0 ? s : 0.0;
+    g_ptr_array_free(ivs, TRUE);
+    return;
   }
+  g_ptr_array_free(ivs, TRUE);
 }
 
 // 中间信息区Pango配色：暗色说明字/亮色数值
@@ -213,8 +286,14 @@ void update_mid_info(TypewriterWindow *self) {
       " " MID_DIM "退格" MID_END " " MID_VAL "<b>%u</b>" MID_END,
       state_text, self->stats.reform_count, self->stats.backspace_count);
 
-  double peak = 0.0, stability = 0.0;
-  typewriter_compute_peak_stability(self->key_time_queue, &peak, &stability);
+  // 峰值击键：当前16键窗口速度与历史峰值取较大者，只增不减
+  double current_peak = 0.0, stability = 0.0;
+  typewriter_compute_peak(self->key_time_queue, &current_peak);
+  typewriter_compute_stability(self->stability_queue, &stability);
+  if (current_peak > self->peak_stroke) {
+    self->peak_stroke = current_peak;
+  }
+  double peak = self->peak_stroke;
   if (peak > 0.0) {
     label_set_markup_printf(
         GTK_LABEL(self->live_metrics),
@@ -248,7 +327,7 @@ gboolean update_stat_ui(gpointer user_data) {
     return G_SOURCE_CONTINUE;
   }
 
-  // 计算已用时间（毫秒）
+  // 计算已用时间（毫秒，打字钟：暂停段已扣除）
   gint64 current_time = g_get_monotonic_time();
   gint64 elapsed_time_ms =
       (current_time - self->stats.start_time - self->stats.pause_duration) / 1000.0;
@@ -266,9 +345,11 @@ gboolean update_stat_ui(gpointer user_data) {
   double realtime_stroke_speed = 0.0;
 
   if (g_queue_get_length(self->key_time_queue) >= 2) {
+    // 队列存打字钟（已扣暂停），比较须同在打字钟空间
+    gint64 current_clock = current_time - (gint64)self->stats.pause_duration;
     gint64 first_time =
         GPOINTER_TO_SIZE(g_queue_peek_head(self->key_time_queue));
-    gint64 time_diff_us = (current_time - first_time);
+    gint64 time_diff_us = (current_clock - first_time);
 
     // 确保时间差不为0
     if (time_diff_us > 0) {

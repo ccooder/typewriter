@@ -21,5 +21,9 @@
 			<default>""</default>
 			<summary>成绩单显示的输入法名，留空则自动探测输入法框架</summary>
 		</key>
+		<key name="slow-threshold" type="i">
+			<default>2</default>
+			<summary>慢字词判定阈值（秒）：距上次上屏超过该时长即记为慢字词</summary>
+		</key>
 	</schema>
 </schemalist>

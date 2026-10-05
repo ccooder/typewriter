@@ -33,8 +33,9 @@ G_BEGIN_DECLS
 // UI 刷新间隔 单位毫秒
 #define REFRESH_INTERVAL 17
 
-// 慢字词阈值：距上次上屏超过该时长（微秒，打字钟已扣暂停）即计入
-#define SLOW_THRESHOLD_US G_USEC_PER_SEC
+// 慢字词阈值默认值（秒）：schema缺失时的回退值
+#define SLOW_THRESHOLD_DEFAULT_S 2
+
 
 // 慢字词记录：一次上屏超过阈值即记一条，text为对照区对应切片（多字=词）
 typedef struct {
@@ -150,13 +151,21 @@ struct _TypewriterWindow {
   GSettings *settings;
   // 实时击键速度
   GQueue *key_time_queue;
+  // 峰值击键窗口（最近N键）
   guint max_queue_size;
+  // 本局峰值击键（键/秒）：只增不减，17ms刷新时取当前16键窗口速
+  // 与历史峰值的较大者，显示即历史最高
+  double peak_stroke;
+  // 节奏稳定性用全量击键（不封顶）
+  GQueue *stability_queue;
   // 跟打状态
   TypewriterState state;
   // 慢字词记录链表（TypewriterSlowItem，结束时点击指标可看详情）
   GList *slow_items;
   // 上次上屏时的打字钟（微秒，已扣暂停），0=尚无上屏
   gint64 last_commit_elapsed;
+  // 慢字词判定阈值（秒，schema未安装时用SLOW_THRESHOLD_DEFAULT_S）
+  gint slow_threshold_s;
   // 中间信息条拖拽起始时的paned位置（拖拽调整上下框比例用）
   gint mid_drag_start_pos;
   // 拖拽起始时的指针表面Y与最新偏移：偏移必须用表面坐标算——控件自身

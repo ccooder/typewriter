@@ -99,13 +99,17 @@ static void record_keystroke(TypewriterWindow *self, guint keyval) {
     }
     self->stats.stroke_count++;
 
-    // 更新击键时间队列
+    // 更新击键时间队列：峰值=最近16键窗口内最短间隔（key_time_queue
+    // 封顶16）；稳定性用全量击键（stability_queue不封顶，暂停已扣）。
+    // 时间戳存打字钟（monotonic减已累积暂停时长）
     guint64 current_time = g_get_monotonic_time();
-    g_queue_push_tail(self->key_time_queue, GSIZE_TO_POINTER(current_time));
-
-    // 保持队列大小不超过max_queue_size
-    while (g_queue_get_length(self->key_time_queue) > self->max_queue_size) {
-      g_queue_pop_head(self->key_time_queue);
+    if (self->stats.start_time > 0) {
+      guint64 clock = current_time - (guint64)self->stats.pause_duration;
+      g_queue_push_tail(self->key_time_queue, GSIZE_TO_POINTER(clock));
+      while (g_queue_get_length(self->key_time_queue) > self->max_queue_size) {
+        g_queue_pop_head(self->key_time_queue);
+      }
+      g_queue_push_tail(self->stability_queue, GSIZE_TO_POINTER(clock));
     }
   }
 }
@@ -194,7 +198,9 @@ void on_follow_delete_range(GtkTextBuffer *buffer, GtkTextIter *start,
                             GtkTextIter *end, gpointer user_data) {
   (void)buffer;
   TypewriterWindow *self = TYPEWRITER_WINDOW(user_data);
-  if (self->state == TYPEWRITER_STATE_ENDED) {
+  // 仅跟打中的删除计回改；重打/载文时set_text("")的整段删除
+  // 不得污染已重置的reform_count（重打先置RETYPE_READY再清buffer）
+  if (self->state != TYPEWRITER_STATE_TYPING) {
     return;
   }
   gint deleted = 0;
@@ -271,7 +277,8 @@ void on_follow_buffer_changed(GtkTextBuffer *follow_buffer,
   if (self->stats.start_time > 0 && compared > 0) {
     gint64 elapsed_us = g_get_monotonic_time() - self->stats.start_time -
                         (gint64)self->stats.pause_duration;
-    if (elapsed_us - self->last_commit_elapsed > SLOW_THRESHOLD_US) {
+    if (elapsed_us - self->last_commit_elapsed >
+        (gint64)self->slow_threshold_s * G_USEC_PER_SEC) {
       GtkTextIter s_it, e_it;
       gtk_text_buffer_get_start_iter(control_buffer, &s_it);
       gtk_text_iter_forward_chars(&s_it, old_total);

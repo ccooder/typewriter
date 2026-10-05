@@ -113,6 +113,7 @@ static void typewriter_window_finalize(GObject *object) {
   g_clear_pointer(&self->preedit_buffer, g_free);
   g_clear_pointer(&self->article_name, g_free);
   g_clear_pointer(&self->key_time_queue, g_queue_free);
+  g_clear_pointer(&self->stability_queue, g_queue_free);
   clear_slow_items(self);
 
   G_OBJECT_CLASS(typewriter_window_parent_class)->finalize(object);
@@ -300,6 +301,7 @@ static void typewriter_window_init(TypewriterWindow *self) {
   if (schema != NULL) {
     self->settings = g_settings_new("run.fenglu.typewriter");
     g_settings_schema_unref(schema);
+    self->slow_threshold_s = g_settings_get_int(self->settings, "slow-threshold");
     // 尺寸经default-width/height双向绑定，拖动即写回
     g_settings_bind(self->settings, "window-width", self, "default-width",
                     G_SETTINGS_BIND_DEFAULT);
@@ -331,8 +333,12 @@ static void typewriter_window_init(TypewriterWindow *self) {
   self->maximized_poll_id = 0;
   self->slow_items = NULL;
   self->last_commit_elapsed = 0;
-  self->max_queue_size = 16;  // 存储最近16次击键时间
+  // schema缺失（settings为NULL）时用默认阈值
+  self->slow_threshold_s = SLOW_THRESHOLD_DEFAULT_S;
   self->key_time_queue = g_queue_new();
+  self->stability_queue = g_queue_new();
+  self->max_queue_size = 7;  // 峰值击键窗口
+  self->peak_stroke = 0.0;
   self->qq_group_list_store = g_list_store_new(QQ_GROUP_TYPE_ITEM);
 
   // 对照区上色tag只创建一次，复用避免tag table无限膨胀
@@ -586,6 +592,13 @@ void typewriter_pause(TypewriterWindow *self) {
   }
   // 记录暂停开始时间
   self->stats.pause_start_time = g_get_monotonic_time();
+  // 暂停即断点：把慢字词计时起点快照到此刻，恢复后下一字的
+  // 耗时只计恢复后的时段，不把暂停前的思考间隔算到该字头上
+  if (self->stats.start_time > 0) {
+    self->last_commit_elapsed =
+        self->stats.pause_start_time - self->stats.start_time -
+        (gint64)self->stats.pause_duration;
+  }
   update_mid_info(self);
 }
 
@@ -600,6 +613,8 @@ void typewriter_window_retype(TypewriterWindow *win) {
 
   // 清空击键时间队列与慢字词记录
   g_queue_clear(win->key_time_queue);
+  g_queue_clear(win->stability_queue);
+  win->peak_stroke = 0.0;
   clear_slow_items(win);
   win->last_commit_elapsed = 0;
   gtk_widget_set_tooltip_text(win->record_label, NULL);
